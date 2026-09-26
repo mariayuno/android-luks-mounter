@@ -453,7 +453,9 @@ unmount_device() {
     log "Unmounting $label from all namespaces..."
 
     # 🔓 1. Kill all bindfs views for this label in the GLOBAL namespace.
-    $NSENTER_BIN -t 1 -m -- cat /proc/mounts | grep "/storage/emulated/0/.*$label " | awk '{print $2}' | while read -r sp; do
+    # NOTE: mount_device() maps /storage/emulated/0 → /data/media/0 before calling
+    # bindfs, so we must search both prefixes or orphaned mounts are never cleaned up.
+    $NSENTER_BIN -t 1 -m -- cat /proc/mounts | grep -E "(/storage/emulated/0|/data/media/0)/[^ ]*${label}( |/)" | awk '{print $2}' | while read -r sp; do
         run_cmd nsenter -t 1 -m -- umount -l "$sp" && log "Detached user view: $sp"
     done
 
@@ -551,7 +553,21 @@ mount_device() {
         fi
 
         if [ $conflict -eq 0 ]; then
-             warn "$mnt_point is already correctly mounted." && return 0
+            # Hardware is at the right place — but verify the user view exists too.
+            # If vold mounted the hardware at boot before our service ran, it will
+            # appear here as conflict=0 (same device) but bindfs was never called,
+            # leaving User View as "-".  Returning here silently skips bindfs.
+            local _chk_view="$target_storage"
+            if [[ "$_chk_view" == "/storage/emulated/0"* ]] || [[ "$_chk_view" == "/sdcard"* ]]; then
+                _chk_view=$(echo "$_chk_view" | sed -E 's|^(/storage/emulated/0|/sdcard)|/data/media/0|')
+            fi
+            if $NSENTER_BIN -t 1 -m -- mount | grep -q " ${_chk_view} "; then
+                warn "$mnt_point is already correctly mounted (user view present)." && return 0
+            fi
+            # Hardware is fine but user view is absent.  Skip the block-device mount
+            # entirely and fall through to bindfs creation using the existing mount.
+            log "Hardware mounted but user view missing — will recreate bindfs only. 🩹"
+            HARDWARE_ALREADY_MOUNTED=1
         else
             log "Conflict: $mnt_point is occupied by $current_dev. Clearing..."
             unmount_device "$label"
@@ -721,7 +737,14 @@ mount_device() {
     
     MOUNTED=0
     local NS_ENV="env PATH=$PATH LD_LIBRARY_PATH=$LD_LIBRARY_PATH LD_PRELOAD=$LD_PRELOAD"
-    
+
+    # ⚡ BINDFS-ONLY PATH: hardware was already mounted (e.g. by vold at boot) but
+    # the user view was absent.  Skip all block-device mount attempts and jump
+    # straight to the bindfs creation and success handling below.
+    if [ "${HARDWARE_ALREADY_MOUNTED:-0}" -eq 1 ]; then
+        MOUNTED=1
+    else
+
     # 🚫 Explicit Skip: BTRFS 
     local raw_fs=$("$BLKID_BIN" -o value -s TYPE "$TARGET_DEV")
     if [ "$raw_fs" = "btrfs" ]; then
@@ -756,6 +779,8 @@ mount_device() {
     [ $MOUNTED -eq 0 ] && for fs in $(cat /proc/filesystems | grep -v "nodev" | awk '{print $2}'); do
         run_cmd nsenter -t 1 -m -- $NS_ENV "$MOUNT_BIN" -t "$fs" "$TARGET_DEV" "$mnt_point" >/dev/null 2>&1 && MOUNTED=1 && break
     done
+
+    fi # end HARDWARE_ALREADY_MOUNTED guard
 
     # ❌ Handling Mount Failure
     if [ $MOUNTED -eq 0 ]; then
@@ -878,6 +903,18 @@ save_config_label() {
     local uuid="$1" ; local label="$2" ; local dev_path="$3" ; local config_file="$KEY_DIR/config"
     [ ! -f "$config_file" ] && return 1
     local safe_uuid=$(echo "$uuid" | tr '-' '_')
+
+    # 🧹 Stale-entry cleanup: when a real UUID is known, remove any path-derived
+    # fallback key (e.g. _dev_block_mmcblk1p1) that was written by an earlier run
+    # where blkid hadn't returned a UUID yet.  Leaving both causes the wrong label
+    # to be resolved on the next boot (first match wins in shell eval order).
+    local path_uuid=$(echo "$dev_path" | tr '/' '_')
+    local safe_path_uuid=$(echo "$path_uuid" | tr '-' '_')
+    if [ "$safe_path_uuid" != "$safe_uuid" ] && grep -q "MAPPING_${safe_path_uuid}=" "$config_file"; then
+        log "Removing stale path-derived config entry for $dev_path (superseded by real UUID $uuid)"
+        sed -i "/MAPPING_${safe_path_uuid}=/d; /STORAGE_PATH_${safe_path_uuid}=/d; /KEY_PATH_${safe_path_uuid}=/d; /# --- .*${path_uuid}/d" "$config_file"
+    fi
+
     grep -q "MAPPING_${safe_uuid}=" "$config_file" && return 1
     log "Mapping $label to $uuid... 💾"
     local type="OTG" ; [[ "$dev_path" == *mmcblk* ]] && type="MMC"
