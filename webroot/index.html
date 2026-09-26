@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LUKS Mounter</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg:       #0d1117;
+    --surface:  #161b22;
+    --border:   #30363d;
+    --border2:  #21262d;
+    --text:     #e6edf3;
+    --muted:    #8b949e;
+    --accent:   #58a6ff;
+    --green:    #3fb950;
+    --red:      #f85149;
+    --amber:    #d29922;
+    --purple:   #bc8cff;
+    --font-ui:  'Inter', system-ui, sans-serif;
+    --font-mono:'JetBrains Mono', monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    line-height: 1.5;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  /* ── Layout ── */
+  .shell {
+    display: grid;
+    grid-template-rows: 48px 1fr;
+    grid-template-columns: 220px 1fr;
+    height: 100dvh;
+  }
+
+  /* ── Topbar ── */
+  .topbar {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .topbar-title {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    letter-spacing: -0.01em;
+  }
+  .topbar-title span { color: var(--accent); }
+  .topbar-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .version-badge {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+    background: var(--border2);
+    padding: 2px 8px;
+    border-radius: 20px;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    padding: 12px 0;
+  }
+  .sidebar-section {
+    padding: 4px 8px;
+    margin-bottom: 4px;
+  }
+  .sidebar-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 4px 8px 6px;
+  }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 500;
+    transition: background 0.1s, color 0.1s;
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+  }
+  .nav-item:hover { background: var(--border2); color: var(--text); }
+  .nav-item.active { background: rgba(88,166,255,0.12); color: var(--accent); }
+  .nav-item .icon { width: 16px; text-align: center; flex-shrink: 0; }
+
+  /* device list in sidebar */
+  .device-list { padding: 0 8px; }
+  .device-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--muted);
+    transition: background 0.1s, color 0.1s;
+  }
+  .device-item:hover { background: var(--border2); color: var(--text); }
+  .device-item.active { background: var(--border2); color: var(--text); }
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .dot.mounted  { background: var(--green); box-shadow: 0 0 5px var(--green); }
+  .dot.locked   { background: var(--red); }
+  .dot.plain    { background: var(--amber); }
+  .dot.unknown  { background: var(--muted); }
+
+  /* ── Main ── */
+  .main {
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* ── Page header ── */
+  .page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .page-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .page-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: var(--font-ui);
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: opacity 0.1s, background 0.1s;
+  }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary  { background: var(--accent); color: #000; border-color: var(--accent); }
+  .btn-primary:hover:not(:disabled) { opacity: 0.85; }
+  .btn-danger   { background: transparent; color: var(--red); border-color: var(--red); }
+  .btn-danger:hover:not(:disabled)  { background: rgba(248,81,73,0.1); }
+  .btn-ghost    { background: transparent; color: var(--text); border-color: var(--border); }
+  .btn-ghost:hover:not(:disabled)   { background: var(--border2); }
+  .btn-success  { background: transparent; color: var(--green); border-color: var(--green); }
+  .btn-success:hover:not(:disabled) { background: rgba(63,185,80,0.1); }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .card-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border2);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .card-body { padding: 16px; }
+
+  /* ── Status Grid ── */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+  }
+  .stat-box {
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    padding: 14px 16px;
+  }
+  .stat-value {
+    font-family: var(--font-mono);
+    font-size: 22px;
+    font-weight: 500;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .stat-label { font-size: 12px; color: var(--muted); }
+  .stat-value.green  { color: var(--green); }
+  .stat-value.red    { color: var(--red); }
+  .stat-value.amber  { color: var(--amber); }
+  .stat-value.accent { color: var(--accent); }
+
+  /* ── Device Table ── */
+  .dev-table { width: 100%; border-collapse: collapse; }
+  .dev-table th {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border2);
+    white-space: nowrap;
+  }
+  .dev-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border2);
+    font-size: 13px;
+    vertical-align: middle;
+  }
+  .dev-table tr:last-child td { border-bottom: none; }
+  .dev-table tr:hover td { background: var(--border2); }
+
+  .mono { font-family: var(--font-mono); font-size: 12px; }
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-weight: 500;
+  }
+  .tag-green  { background: rgba(63,185,80,0.15);  color: var(--green); }
+  .tag-red    { background: rgba(248,81,73,0.15);  color: var(--red); }
+  .tag-amber  { background: rgba(210,153,34,0.15); color: var(--amber); }
+  .tag-blue   { background: rgba(88,166,255,0.15); color: var(--accent); }
+  .tag-muted  { background: var(--border2); color: var(--muted); }
+
+  /* ── Log ── */
+  .log-box {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--muted);
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    padding: 12px 14px;
+    max-height: 360px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .log-line-info  { color: var(--accent); }
+  .log-line-error { color: var(--red); }
+  .log-line-warn  { color: var(--amber); }
+  .log-line-ok    { color: var(--green); }
+
+  /* ── Config editor ── */
+  textarea.config-edit {
+    width: 100%;
+    min-height: 320px;
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.7;
+    padding: 12px 14px;
+    resize: vertical;
+    outline: none;
+  }
+  textarea.config-edit:focus { border-color: var(--accent); }
+
+  /* ── Key manager ── */
+  .key-list { display: flex; flex-direction: column; gap: 8px; }
+  .key-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+  }
+  .key-icon { color: var(--amber); font-size: 16px; flex-shrink: 0; }
+  .key-name { font-family: var(--font-mono); font-size: 12px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .key-meta { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+  /* ── Unlock modal ── */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.15s;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    width: min(380px, 92vw);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .modal-title { font-size: 15px; font-weight: 600; }
+  .modal-desc  { font-size: 13px; color: var(--muted); }
+  .input-group { display: flex; flex-direction: column; gap: 6px; }
+  .input-label { font-size: 12px; font-weight: 500; color: var(--muted); }
+  input[type=password], input[type=text] {
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    padding: 8px 12px;
+    width: 100%;
+    outline: none;
+  }
+  input:focus { border-color: var(--accent); }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+  /* ── Toast ── */
+  .toast-wrap {
+    position: fixed;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    right: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 200;
+  }
+  .toast {
+    font-size: 13px;
+    padding: 10px 16px;
+    border-radius: 8px;
+    border-left: 3px solid;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    animation: slideIn 0.2s ease;
+    max-width: 320px;
+  }
+  .toast.success { border-color: var(--green); }
+  .toast.error   { border-color: var(--red); }
+  .toast.info    { border-color: var(--accent); }
+  @keyframes slideIn {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0);    opacity: 1; }
+  }
+
+  /* ── Spinner ── */
+  .spin {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Section visibility ── */
+  .page { display: none; }
+  .page.active { display: contents; }
+
+  /* ── Divider ── */
+  hr { border: none; border-top: 1px solid var(--border2); }
+
+  /* ── Responsive ── */
+  @media (max-width: 600px) {
+    .shell { grid-template-columns: 1fr; grid-template-rows: 48px 1fr 52px; }
+    .sidebar {
+      grid-row: 3;
+      grid-column: 1;
+      flex-direction: row;
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: 0 8px;
+      border-right: none;
+      border-top: 1px solid var(--border);
+      align-items: center;
+    }
+    .sidebar-label { display: none; }
+    .sidebar-section { display: contents; }
+    .device-list { display: none; }
+    .nav-item { flex-direction: column; gap: 2px; padding: 8px 10px; font-size: 10px; border-radius: 6px; }
+    .nav-item .icon { width: auto; }
+    .main { padding: 14px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- Topbar -->
+  <header class="topbar">
+    <div class="topbar-title">🔐 <span>LUKS</span> Mounter</div>
+    <div class="topbar-right">
+      <span class="version-badge" id="ver">v1.5.37-GOLD</span>
+      <button class="btn btn-ghost btn-sm" onclick="refreshAll()">↻ Refresh</button>
+    </div>
+  </header>
+
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Navigation</div>
+      <button class="nav-item active" onclick="switchPage('dashboard', this)">
+        <span class="icon">📊</span> Dashboard
+      </button>
+      <button class="nav-item" onclick="switchPage('devices', this)">
+        <span class="icon">💾</span> Devices
+      </button>
+      <button class="nav-item" onclick="switchPage('keys', this)">
+        <span class="icon">🔑</span> Keys
+      </button>
+      <button class="nav-item" onclick="switchPage('config', this)">
+        <span class="icon">⚙️</span> Config
+      </button>
+      <button class="nav-item" onclick="switchPage('logs', this)">
+        <span class="icon">📋</span> Logs
+      </button>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Devices</div>
+      <div class="device-list" id="sidebar-devices">
+        <div style="padding:6px 10px;font-size:12px;color:var(--muted)">Scanning…</div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main content -->
+  <main class="main" id="main">
+
+    <!-- Dashboard page -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-header">
+        <div class="page-title">Dashboard</div>
+        <div class="page-actions">
+          <button class="btn btn-ghost btn-sm" onclick="runScan()">📡 Scan</button>
+          <button class="btn btn-primary btn-sm" onclick="mountAll()">⚡ Mount All</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">Overview</span></div>
+        <div class="card-body">
+          <div class="stat-grid">
+            <div class="stat-box">
+              <div class="stat-value accent" id="stat-total">—</div>
+              <div class="stat-label">Detected devices</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-value green" id="stat-mounted">—</div>
+              <div class="stat-label">Mounted</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-value red" id="stat-locked">—</div>
+              <div class="stat-label">Locked LUKS</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-value amber" id="stat-plain">—</div>
+              <div class="stat-label">Plain / unlocked</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Storage status</span>
+          <span class="spin" id="status-spin" style="display:none"></span>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="dev-table">
+            <thead>
+              <tr>
+                <th>Device</th>
+                <th>Type</th>
+                <th>Encryption</th>
+                <th>Mount point</th>
+                <th>User path</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="status-table-body">
+              <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">
+                Scanning devices…
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Devices page -->
+    <div class="page" id="page-devices">
+      <div class="page-header">
+        <div class="page-title">Devices</div>
+        <div class="page-actions">
+          <button class="btn btn-ghost btn-sm" onclick="runScan()">📡 Scan &amp; register</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">Manual mount</span></div>
+        <div class="card-body" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+          <div class="input-group" style="flex:1;min-width:160px">
+            <label class="input-label">Device path</label>
+            <input type="text" id="manual-dev" placeholder="/dev/block/sda1">
+          </div>
+          <div class="input-group" style="flex:1;min-width:120px">
+            <label class="input-label">Label (optional)</label>
+            <input type="text" id="manual-label" placeholder="mydrive">
+          </div>
+          <button class="btn btn-primary" onclick="manualMount()">Mount</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">Manual unmount</span></div>
+        <div class="card-body" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+          <div class="input-group" style="flex:1;min-width:160px">
+            <label class="input-label">Label</label>
+            <input type="text" id="unmount-label" placeholder="mydrive">
+          </div>
+          <button class="btn btn-danger" onclick="manualUnmount()">Unmount</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">Blocked devices</span>
+          <button class="btn btn-ghost btn-sm" onclick="clearBlocked()">Clear all blocks</button>
+        </div>
+        <div class="card-body">
+          <div id="blocked-list" style="font-family:var(--font-mono);font-size:12px;color:var(--muted)">Loading…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Keys page -->
+    <div class="page" id="page-keys">
+      <div class="page-header">
+        <div class="page-title">Keyfiles</div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Key directory — <span class="mono" style="color:var(--muted)">/storage/emulated/0/Documents/luks_keys</span></span>
+          <button class="btn btn-ghost btn-sm" onclick="loadKeys()">↻</button>
+        </div>
+        <div class="card-body">
+          <div class="key-list" id="key-list">
+            <div style="color:var(--muted);font-size:13px">Loading…</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Generate new keyfile</span></div>
+        <div class="card-body" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+          <div class="input-group" style="flex:1;min-width:180px">
+            <label class="input-label">Filename (saved to key dir)</label>
+            <input type="text" id="new-key-name" placeholder="e.g. abc123-uuid.key">
+          </div>
+          <button class="btn btn-primary" onclick="generateKey()">Generate 512B key</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Config page -->
+    <div class="page" id="page-config">
+      <div class="page-header">
+        <div class="page-title">Configuration</div>
+        <div class="page-actions">
+          <button class="btn btn-ghost btn-sm" onclick="loadConfig()">↻ Reload</button>
+          <button class="btn btn-primary btn-sm" onclick="saveConfig()">Save</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">mounter config</span>
+          <span class="mono" style="font-size:11px;color:var(--muted)">/storage/emulated/0/Documents/luks_keys/config</span>
+        </div>
+        <div class="card-body">
+          <textarea class="config-edit" id="config-text" spellcheck="false"></textarea>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Service</span></div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:10px">
+          <p style="font-size:13px;color:var(--muted)">Install the auto-mount background service to <span class="mono">/data/adb/service.d/</span></p>
+          <div>
+            <button class="btn btn-ghost" onclick="installService()">🤖 Install service</button>
+          </div>
+          <p style="font-size:13px;color:var(--muted)">Create <span class="mono">mounter</span> symlink in <span class="mono">/system/bin</span></p>
+          <div>
+            <button class="btn btn-ghost" onclick="linkBin()">🔗 Link binary</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Logs page -->
+    <div class="page" id="page-logs">
+      <div class="page-header">
+        <div class="page-title">Logs</div>
+        <div class="page-actions">
+          <button class="btn btn-ghost btn-sm" onclick="loadLog()">↻ Refresh</button>
+          <button class="btn btn-danger btn-sm" onclick="clearLog()">🗑 Clear</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">mounter.log</span>
+          <span class="mono" style="font-size:11px;color:var(--muted)">/data/local/tmp/mounter.log</span>
+        </div>
+        <div class="card-body" style="padding:0">
+          <div class="log-box" id="log-box">Loading…</div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Unlock Modal -->
+<div class="modal-overlay" id="unlock-modal">
+  <div class="modal">
+    <div class="modal-title">🔐 Unlock LUKS device</div>
+    <div class="modal-desc" id="unlock-desc">Enter passphrase for <span id="unlock-dev-name" class="mono"></span></div>
+    <div class="input-group">
+      <label class="input-label">Passphrase</label>
+      <input type="password" id="unlock-pass" placeholder="Enter passphrase…" onkeydown="if(event.key==='Enter')confirmUnlock()">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmUnlock()">Unlock &amp; mount</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-wrap" id="toasts"></div>
+
+<script>
+// ── KSU bridge ──────────────────────────────────────────────────────────────
+// In KernelSU WebUI the bridge is injected as window.ksu
+// ksu.exec(cmd) returns a Promise<{stdout, stderr, errno}>
+const ksu = window.ksu || null;
+
+async function sh(cmd) {
+  if (!ksu) {
+    // Dev fallback — return mock data
+    console.warn('[dev] sh:', cmd);
+    return { stdout: '', stderr: '', errno: 0 };
+  }
+  try {
+    const r = await ksu.exec(cmd);
+    return r;
+  } catch(e) {
+    return { stdout: '', stderr: String(e), errno: 1 };
+  }
+}
+
+// ── Toast ────────────────────────────────────────────────────────────────────
+function toast(msg, type='info', dur=3500) {
+  const wrap = document.getElementById('toasts');
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  wrap.appendChild(el);
+  setTimeout(() => el.remove(), dur);
+}
+
+// ── Page switching ───────────────────────────────────────────────────────────
+function switchPage(name, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  btn.classList.add('active');
+  // Lazy-load page data
+  if (name === 'logs')    loadLog();
+  if (name === 'config')  loadConfig();
+  if (name === 'keys')    loadKeys();
+  if (name === 'devices') loadBlocked();
+}
+
+// ── Status / Dashboard ───────────────────────────────────────────────────────
+const MOUNTER = '/system/bin/mounter';
+
+async function loadStatus() {
+  document.getElementById('status-spin').style.display = '';
+  const { stdout } = await sh(`${MOUNTER} --status 2>/dev/null`);
+  document.getElementById('status-spin').style.display = 'none';
+
+  // Also get raw device list for sidebar + stats
+  const { stdout: devRaw } = await sh(
+    `ls /dev/block/sd* /dev/block/mmcblk1* 2>/dev/null`
+  );
+  const devs = devRaw.trim().split('\n').filter(Boolean);
+
+  // Parse each device state
+  const rows = [];
+  for (const dev of devs) {
+    const base = dev.split('/').pop();
+    // Skip parent disks that have partitions
+    const { stdout: partCheck } = await sh(
+      `ls ${dev}[0-9]* ${dev}p[0-9]* 2>/dev/null | head -1`
+    );
+    if (partCheck.trim()) continue;
+
+    const { stdout: isLuks, errno: luksErr } = await sh(
+      `cryptsetup isLuks ${dev} 2>/dev/null && echo YES || echo NO`
+    );
+    const luks = isLuks.trim() === 'YES';
+
+    // Find mapper
+    const { stdout: mapperOut } = await sh(
+      `ls /dev/mapper/luks_${base}_* 2>/dev/null | head -1`
+    );
+    const mapper = mapperOut.trim().split('/').pop() || '';
+
+    // Mount point
+    const { stdout: mntOut } = await sh(
+      `cat /proc/mounts | grep "${mapper || dev}" | awk '{print $2}' | head -1`
+    );
+    const mnt = mntOut.trim();
+
+    // User view (bindfs)
+    const { stdout: userOut } = await sh(
+      `cat /proc/mounts | grep "bindfs" | grep "${base}" | awk '{print $2}' | head -1`
+    );
+    const userView = userOut.trim();
+
+    // Type
+    const { stdout: typeOut } = await sh(
+      `echo ${dev} | grep -q mmcblk && echo SD || echo OTG`
+    );
+
+    rows.push({ dev, base, luks, mapper, mnt, userView, type: typeOut.trim() });
+  }
+
+  renderStatusTable(rows);
+  renderSidebar(rows);
+  renderStats(rows);
+}
+
+function renderStats(rows) {
+  const mounted = rows.filter(r => r.mnt).length;
+  const locked  = rows.filter(r => r.luks && !r.mapper).length;
+  const plain   = rows.filter(r => !r.luks && r.mnt).length;
+  document.getElementById('stat-total').textContent   = rows.length;
+  document.getElementById('stat-mounted').textContent = mounted;
+  document.getElementById('stat-locked').textContent  = locked;
+  document.getElementById('stat-plain').textContent   = plain;
+}
+
+function renderSidebar(rows) {
+  const el = document.getElementById('sidebar-devices');
+  if (!rows.length) { el.innerHTML = '<div style="padding:6px 10px;font-size:12px;color:var(--muted)">No devices</div>'; return; }
+  el.innerHTML = rows.map(r => {
+    const dotClass = r.mnt ? 'mounted' : r.luks ? 'locked' : 'plain';
+    return `<div class="device-item"><div class="dot ${dotClass}"></div>${r.base}</div>`;
+  }).join('');
+}
+
+function renderStatusTable(rows) {
+  const tbody = document.getElementById('status-table-body');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">No external devices detected</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r => {
+    let encTag = r.luks
+      ? (r.mapper
+          ? `<span class="tag tag-green">● unlocked</span>`
+          : `<span class="tag tag-red">🔒 locked</span>`)
+      : `<span class="tag tag-amber">plain</span>`;
+
+    let mntCell = r.mnt
+      ? `<span class="mono" style="color:var(--green)">${r.mnt}</span>`
+      : `<span style="color:var(--muted)">—</span>`;
+
+    let userCell = r.userView
+      ? `<span class="mono" style="color:var(--accent)">${r.userView}</span>`
+      : `<span style="color:var(--muted)">—</span>`;
+
+    let actions = '';
+    if (r.mnt) {
+      actions = `<button class="btn btn-danger btn-sm" onclick="unmountDev('${r.base}')">Unmount</button>`;
+    } else if (r.luks && !r.mapper) {
+      actions = `<button class="btn btn-success btn-sm" onclick="openUnlockModal('${r.dev}','${r.base}')">Unlock</button>`;
+    } else {
+      actions = `<button class="btn btn-ghost btn-sm" onclick="mountDev('${r.dev}')">Mount</button>`;
+    }
+
+    return `<tr>
+      <td><span class="mono">${r.base}</span></td>
+      <td><span class="tag tag-muted">${r.type}</span></td>
+      <td>${encTag}</td>
+      <td>${mntCell}</td>
+      <td>${userCell}</td>
+      <td>${actions}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Actions ──────────────────────────────────────────────────────────────────
+async function mountAll() {
+  toast('Mounting all devices…', 'info');
+  const { stdout, stderr, errno } = await sh(`${MOUNTER} --all 2>&1 | tail -20`);
+  if (errno === 0) toast('Auto-mount complete', 'success');
+  else toast('Mount finished with warnings — check logs', 'error');
+  await loadStatus();
+}
+
+async function runScan() {
+  toast('Scanning…', 'info');
+  await sh(`${MOUNTER} --scan 2>&1`);
+  toast('Scan complete', 'success');
+  await loadStatus();
+}
+
+async function mountDev(dev) {
+  toast(`Mounting ${dev}…`, 'info');
+  const { errno } = await sh(`${MOUNTER} ${dev} 2>&1`);
+  if (errno === 0) toast(`Mounted ${dev}`, 'success');
+  else toast(`Mount failed — check logs`, 'error');
+  await loadStatus();
+}
+
+async function unmountDev(label) {
+  toast(`Unmounting ${label}…`, 'info');
+  const { errno } = await sh(`${MOUNTER} --unmount ${label} 2>&1`);
+  if (errno === 0) toast(`Unmounted ${label}`, 'success');
+  else toast(`Unmount failed — check logs`, 'error');
+  await loadStatus();
+}
+
+async function manualMount() {
+  const dev   = document.getElementById('manual-dev').value.trim();
+  const label = document.getElementById('manual-label').value.trim();
+  if (!dev) { toast('Enter a device path', 'error'); return; }
+  toast(`Mounting ${dev}…`, 'info');
+  const cmd = label ? `${MOUNTER} ${dev} ${label}` : `${MOUNTER} ${dev}`;
+  const { errno } = await sh(`${cmd} 2>&1`);
+  if (errno === 0) toast('Mounted', 'success'); else toast('Failed — check logs', 'error');
+  await loadStatus();
+}
+
+async function manualUnmount() {
+  const label = document.getElementById('unmount-label').value.trim();
+  if (!label) { toast('Enter a label', 'error'); return; }
+  await unmountDev(label);
+}
+
+// ── Unlock modal ─────────────────────────────────────────────────────────────
+let _unlockDev = '';
+function openUnlockModal(dev, base) {
+  _unlockDev = dev;
+  document.getElementById('unlock-dev-name').textContent = base;
+  document.getElementById('unlock-pass').value = '';
+  document.getElementById('unlock-modal').classList.add('open');
+  setTimeout(() => document.getElementById('unlock-pass').focus(), 100);
+}
+function closeModal() {
+  document.getElementById('unlock-modal').classList.remove('open');
+  document.getElementById('unlock-pass').value = '';
+}
+async function confirmUnlock() {
+  const pass = document.getElementById('unlock-pass').value;
+  if (!pass) { toast('Enter passphrase', 'error'); return; }
+  closeModal();
+  toast(`Unlocking ${_unlockDev}…`, 'info');
+  // Pipe password to mounter via stdin using printf
+  const { errno } = await sh(`printf '%s' '${pass.replace(/'/g,"'\\''")}'  | ${MOUNTER} ${_unlockDev} 2>&1`);
+  if (errno === 0) toast('Unlocked and mounted', 'success');
+  else toast('Unlock failed — wrong passphrase or check logs', 'error');
+  await loadStatus();
+}
+
+// ── Blocked devices ───────────────────────────────────────────────────────────
+async function loadBlocked() {
+  const { stdout } = await sh(`ls /data/local/tmp/mounter_failures/ 2>/dev/null`);
+  const items = stdout.trim().split('\n').filter(Boolean);
+  const el = document.getElementById('blocked-list');
+  if (!items.length) {
+    el.textContent = 'No blocked devices';
+    return;
+  }
+  el.innerHTML = items.map(i =>
+    `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border2)">
+      <span style="color:var(--red)">${i}</span>
+      <button class="btn btn-ghost btn-sm" onclick="unblockDev('${i}')">Unblock</button>
+    </div>`
+  ).join('');
+}
+
+async function unblockDev(name) {
+  await sh(`rm -f /data/local/tmp/mounter_failures/${name}`);
+  toast(`${name} unblocked`, 'success');
+  loadBlocked();
+}
+
+async function clearBlocked() {
+  await sh(`rm -rf /data/local/tmp/mounter_failures/*`);
+  toast('All blocks cleared', 'success');
+  loadBlocked();
+}
+
+// ── Keys ─────────────────────────────────────────────────────────────────────
+const KEY_DIR = '/storage/emulated/0/Documents/luks_keys';
+
+async function loadKeys() {
+  const { stdout } = await sh(`ls -lh ${KEY_DIR}/ 2>/dev/null`);
+  const lines = stdout.trim().split('\n').filter(l => l && !l.startsWith('total') && !l.endsWith('config'));
+  const el = document.getElementById('key-list');
+  if (!lines.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:13px">No keyfiles found</div>';
+    return;
+  }
+  el.innerHTML = lines.map(line => {
+    const parts = line.trim().split(/\s+/);
+    const size = parts[4] || '?';
+    const name = parts[parts.length - 1];
+    if (!name || name === 'config') return '';
+    return `<div class="key-row">
+      <span class="key-icon">🔑</span>
+      <span class="key-name">${name}</span>
+      <span class="key-meta">${size}</span>
+      <button class="btn btn-danger btn-sm" onclick="deleteKey('${name}')">Delete</button>
+    </div>`;
+  }).filter(Boolean).join('');
+}
+
+async function generateKey() {
+  const name = document.getElementById('new-key-name').value.trim();
+  if (!name) { toast('Enter a filename', 'error'); return; }
+  const path = `${KEY_DIR}/${name}`;
+  const { errno } = await sh(`dd if=/dev/urandom of='${path}' bs=512 count=1 2>/dev/null && chmod 600 '${path}'`);
+  if (errno === 0) { toast(`Keyfile ${name} generated`, 'success'); loadKeys(); }
+  else toast('Failed to generate keyfile', 'error');
+}
+
+async function deleteKey(name) {
+  const { errno } = await sh(`rm -f '${KEY_DIR}/${name}'`);
+  if (errno === 0) { toast(`${name} deleted`, 'success'); loadKeys(); }
+  else toast('Delete failed', 'error');
+}
+
+// ── Config ────────────────────────────────────────────────────────────────────
+const CONFIG_PATH = `${KEY_DIR}/config`;
+
+async function loadConfig() {
+  const { stdout } = await sh(`cat '${CONFIG_PATH}' 2>/dev/null`);
+  document.getElementById('config-text').value = stdout;
+}
+
+async function saveConfig() {
+  const text = document.getElementById('config-text').value;
+  // Write via printf to handle special chars safely
+  const escaped = text.replace(/'/g, "'\\''");
+  const { errno } = await sh(`printf '%s' '${escaped}' > '${CONFIG_PATH}'`);
+  if (errno === 0) toast('Config saved', 'success');
+  else toast('Save failed', 'error');
+}
+
+async function installService() {
+  const { errno } = await sh(`${MOUNTER} --install-service 2>&1`);
+  if (errno === 0) toast('Service installed — reboot to activate', 'success');
+  else toast('Install failed — check logs', 'error');
+}
+
+async function linkBin() {
+  const { errno } = await sh(`${MOUNTER} --link-bin 2>&1`);
+  if (errno === 0) toast('Binary linked to /system/bin/mounter', 'success');
+  else toast('Link failed', 'error');
+}
+
+// ── Logs ──────────────────────────────────────────────────────────────────────
+const LOG_PATH = '/data/local/tmp/mounter.log';
+
+async function loadLog() {
+  const { stdout } = await sh(`tail -200 '${LOG_PATH}' 2>/dev/null || echo "(log empty)"`);
+  const el = document.getElementById('log-box');
+  el.innerHTML = stdout.split('\n').map(line => {
+    let cls = '';
+    if (line.includes('[!] Error') || line.includes('ERROR')) cls = 'log-line-error';
+    else if (line.includes('[!] Warning') || line.includes('WARN')) cls = 'log-line-warn';
+    else if (line.includes('✅') || line.includes('Success') || line.includes('Mounted')) cls = 'log-line-ok';
+    else if (line.includes('[*]')) cls = 'log-line-info';
+    return `<span class="${cls}">${escHtml(line)}</span>`;
+  }).join('\n');
+  el.scrollTop = el.scrollHeight;
+}
+
+async function clearLog() {
+  await sh(`> '${LOG_PATH}'`);
+  toast('Log cleared', 'info');
+  loadLog();
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+function refreshAll() {
+  loadStatus();
+  const activePage = document.querySelector('.page.active');
+  if (activePage?.id === 'page-logs') loadLog();
+  if (activePage?.id === 'page-config') loadConfig();
+  if (activePage?.id === 'page-keys') loadKeys();
+}
+
+// Initial load
+loadStatus();
+</script>
+</body>
+</html>

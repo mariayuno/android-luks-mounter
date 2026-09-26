@@ -23,6 +23,27 @@ Authored with ❤️ by **Rex Ackermann**.
 
 ---
 
+
+---
+
+## 🌐 WebUI (KernelSU / APatch)
+
+A built-in web interface is available directly from your SU Manager. No extra apps needed.
+
+### Features
+- **📊 Dashboard** — Live device table with encryption state, mount points, bindfs paths, and per-device actions
+- **💾 Devices** — Manual mount/unmount by path or label, blocked device manager
+- **🔑 Keys** — Browse, generate, and delete LUKS keyfiles
+- **⚙️ Config** — Edit `mounter config` in-browser, install boot service, link binary
+- **📋 Logs** — Live log viewer with colour-coded output, one-tap clear
+
+### How to open
+1. Open **KernelSU** or **APatch**
+2. Find **Android LUKS Mounter** in the modules list
+3. Tap the **WebUI** button
+
+> The WebUI communicates with the `mounter` binary directly via the KSU/APatch shell bridge — no extra server required.
+
 ## 🛠️ Prerequisites & Requirements
 > [!IMPORTANT]
 > **Dependencies are mandatory for ALL installation methods!** Even if you use the flashable module, you must install the core tools in Termux.
@@ -98,3 +119,13 @@ Released under the **MIT License**. See `LICENSE` for details.
 
 ---
 *Created with ❤️ by [Rex Ackermann](https://github.com/rexackermann)*
+
+---
+
+## 👥 Contributors
+
+| Contributor | Role |
+|-------------|------|
+| [Rex Ackermann](https://github.com/rexackermann) | Author & maintainer |
+| [mariayuno](https://github.com/mariayuno) | WebUI |
+

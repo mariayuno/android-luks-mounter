@@ -102,6 +102,7 @@ set_permissions() {
   set_perm $MODPATH/post-fs-data.sh 0 0 0755
   set_perm $MODPATH/action.sh 0 0 0755
   set_perm $MODPATH/customize.sh 0 0 0755
+  set_perm_recursive $MODPATH/webroot 0 0 0755 0644
 }
 
 # ⚡ Call set_permissions to apply the rules.
