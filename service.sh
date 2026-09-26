@@ -6,6 +6,7 @@
 
 LOG_FILE="/data/local/tmp/mounter.log"
 HEALTH_INTERVAL=60  # seconds between health-check polls
+INOTIFYWAIT="/data/data/com.termux/files/usr/bin/inotifywait"
 
 # --- ⏳ Boot Wait ---
 # Wait for /sdcard/Android (storage framework up) then CE unlock (FBE PIN entered).
@@ -30,7 +31,7 @@ do_mount
 
 # Prefer inotifywait (Termux: pkg install inotify-tools) for zero-overhead uevent
 # detection on /sys/block. Falls back to a slow poll if not installed.
-if command -v inotifywait > /dev/null 2>&1; then
+if [ -x "$INOTIFYWAIT" ]; then
     # inotifywait -m: monitor indefinitely, -e create: fires when a new block device
     # directory appears (kernel adds it on device plug-in / uevent ADD).
     # -q: suppress startup banner. --format '%f': just the filename, we don't need it.
@@ -43,7 +44,7 @@ if command -v inotifywait > /dev/null 2>&1; then
     ) &
     HEALTH_PID=$!
 
-    inotifywait -m -q -e create /sys/block 2>/dev/null | while read -r _dir _event _dev; do
+    "$INOTIFYWAIT" -m -q -e create /sys/block 2>/dev/null | while read -r _dir _event _dev; do
         # Only react to block devices we care about (sd*, mmcblk1*)
         case "$_dev" in
             sd[a-z]*|mmcblk1*) do_mount ;;
