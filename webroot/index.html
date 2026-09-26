@@ -693,18 +693,39 @@
 // ── KSU bridge ──────────────────────────────────────────────────────────────
 // In KernelSU WebUI the bridge is injected as window.ksu
 // ksu.exec(cmd) returns a Promise<{stdout, stderr, errno}>
-const ksu = window.ksu || null;
+let _bridgeWarned = false;
+
+async function getBridge() {
+  if (window.ksu) return window.ksu;
+  // Wait up to 3s for the manager to inject the bridge
+  for (let i = 0; i < 30; i++) {
+    await new Promise(r => setTimeout(r, 100));
+    if (window.ksu) return window.ksu;
+  }
+  return null;
+}
 
 async function sh(cmd) {
-  if (!ksu) {
-    // Dev fallback — return mock data
-    console.warn('[dev] sh:', cmd);
-    return { stdout: '', stderr: '', errno: 0 };
+  const bridge = await getBridge();
+  if (!bridge) {
+    if (!_bridgeWarned) {
+      _bridgeWarned = true;
+      toast('No KSU bridge — open this via KernelSU/MMRL WebUI button, not a browser', 'error', 8000);
+      console.error('[ksu] window.ksu not found after 3s');
+    }
+    console.warn('[ksu] skipped:', cmd);
+    return { stdout: '', stderr: 'no bridge', errno: 1 };
   }
   try {
-    const r = await ksu.exec(cmd);
-    return r;
+    const r = await bridge.exec(cmd);
+    // Normalise: KernelSU={stdout,stderr,errno}, APatch/MMRL may use {out,err,code}
+    return {
+      stdout: r.stdout ?? r.out  ?? '',
+      stderr: r.stderr ?? r.err  ?? '',
+      errno:  r.errno  ?? r.code ?? 0,
+    };
   } catch(e) {
+    console.error('[ksu] exec error:', e);
     return { stdout: '', stderr: String(e), errno: 1 };
   }
 }
