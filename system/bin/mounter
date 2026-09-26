@@ -6,7 +6,7 @@
 #                                                                              #
 #   👤 Author: Rex Ackermann                                                   #
 #   🌐 GitHub: https://github.com/rexackermann                                 #
-#   🏷️ Version: v1.5.37-GOLD                                                #
+#   🏷️ Version: v1.5.45                                                #
 #                                                                              #
 #   🛠️  Requirements: Root (Magisk/KSU), Termux, Cryptsetup, Bindfs, Blkid     #
 #   ⚖️  License: MIT                                                           #
@@ -1005,7 +1005,7 @@ show_status() {
 # --- 🚀 Main Execution Block ---
 
 SESSION_ID=$(date +%s)_$((RANDOM % 1000))
-log "Starting Android LUKS Mounter v1.5.37-GOLD ✨"
+log "Starting Android LUKS Mounter v1.5.45 ✨"
 log "Session ID: $SESSION_ID"
 log "Executing from: $(readlink -f "$0")"
 
