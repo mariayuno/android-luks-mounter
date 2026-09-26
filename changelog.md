@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.5.40 — 2026-09-26
+### fix: WebUI bridge compatibility with ReSukiSU and other KernelSU forks (PR #10)
+- **🐛 WebUI now works on ReSukiSU**: some KernelSU forks return a plain `string` from `ksu.exec()` instead of the standard `{stdout, stderr, errno}` object — destructuring `{ stdout }` from a string always yields `undefined`, so every command silently received no output despite executing successfully as root
+- **🔧 Normalised exec return value**: `sh()` now checks `typeof r === 'string'` before destructuring, wrapping plain-string returns as `{ stdout: r, stderr: '', errno: 0 }` so all existing callers work without changes
+- **🔀 Field name fallback**: also normalises alternate field names (`out`/`err`/`code`) used by some APatch and MMRL builds
+- **Contributor**: [@mariayuno](https://github.com/mariayuno)
+
 ## v1.5.39 — 2026-09-26
 ### ci: GitHub Actions auto-build & release (PR #3)
 - **⚙️ Auto-build on every commit**: every push to `main` triggers a full build and GitHub Release
