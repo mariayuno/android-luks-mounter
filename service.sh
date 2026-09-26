@@ -1,57 +1,63 @@
 #!/system/bin/sh
 # 🤖 Android LUKS Mounter Service Script
 # 👤 Author: Rex Ackermann
-# 📝 Purpose: This script runs as a background service (daemon) to automatically
-#    detect and mount drives when they are plugged in.
+# 📝 Purpose: Event-driven service that mounts drives on uevent (block device add)
+#    with a slow health-check poll to catch silent bindfs failures.
 
-# --- ⏳ Boot Wait Loop ---
-# Wait for the Android boot process to settle and for the user to unlock the screen.
-# Significance:
-# 1. On File-Based Encryption (FBE) devices (modern Android), the /sdcard partition
-#    and many encrypted storage areas are NOT accessible until the user enters their PIN/Pattern.
-# 2. Waiting for /sdcard/Android ensures the storage framework is fully initialized.
-# Wait for the Android framework to be ready.
-until [ -d "/sdcard/Android" ]; do
-  sleep 1
-done
+LOG_FILE="/data/local/tmp/mounter.log"
+HEALTH_INTERVAL=60  # seconds between health-check polls
 
-# On FBE (File-Based Encryption) devices, /sdcard/Android can exist before the
-# user has entered their PIN/pattern (Direct Boot mode).  The FUSE emulated
-# storage layer (/storage/emulated/0) is NOT available until after first unlock,
-# so any bindfs view that targets /storage/emulated/0/... will fail the ls
-# verification check and be immediately torn down.
-#
-# Wait until CE (Credential Encrypted) storage is unlocked by polling the
-# system property that Android sets after the user authenticates.
-until getprop sys.user.0.ce_available 2>/dev/null | grep -q "true"; do
-  sleep 1
-done
+# --- ⏳ Boot Wait ---
+# Wait for /sdcard/Android (storage framework up) then CE unlock (FBE PIN entered).
+until [ -d "/sdcard/Android" ]; do sleep 1; done
+until getprop sys.user.0.ce_available 2>/dev/null | grep -q "true"; do sleep 1; done
 
-# --- 🚀 Main Service Loop ---
-# Global paths (PATH, LD_LIBRARY_PATH) are verified and set by the mounter script itself.
-# We call the main script with the '--all' flag to trigger a full scan-and-mount pass.
-
-while true; do
-    # 📏 Log Management:
-    # We divert output to a log file for debugging.
-    LOG_FILE="/data/local/tmp/mounter.log"
-    
-    # 🧹 Auto-Rotation:
-    # To prevent the log file from consuming all available space in /data/local/tmp,
-    # we check its size. If it exceeds 10,000 lines, we truncate it.
-    if [ -f "$LOG_FILE" ] && [ "$(wc -l < "$LOG_FILE")" -gt 10000 ]; then
-        # Keep the last 10,000 lines (most recent) and discard the rest.
+# --- 📏 Log Rotation ---
+rotate_log() {
+    [ -f "$LOG_FILE" ] && [ "$(wc -l < "$LOG_FILE")" -gt 10000 ] && \
         tail -n 10000 "$LOG_FILE" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "$LOG_FILE"
-    fi
+}
 
-    # ⚡ Execute the Mount Scan:
-    # 1. Calls /system/bin/mounter
-    # 2. '--all' flag tells it to scan all block devices and mount any known/configured ones.
-    # 3. '>> "$LOG_FILE" 2>&1' captures both Standard Output and Errors to the log.
+# --- ⚡ Mount Trigger ---
+do_mount() {
+    rotate_log
     /system/bin/mounter --all >> "$LOG_FILE" 2>&1
-    
-    # ⏱️ Polling Interval:
-    # Wait 10 seconds before scanning again.
-    # This balance ensures drives are picked up relatively quickly without burning CPU.
-    sleep 10
-done
+}
+
+# --- 🚀 Main ---
+# Run once at boot after unlock to catch anything vold grabbed before us.
+do_mount
+
+# Prefer inotifywait (Termux: pkg install inotify-tools) for zero-overhead uevent
+# detection on /sys/block. Falls back to a slow poll if not installed.
+if command -v inotifywait > /dev/null 2>&1; then
+    # inotifywait -m: monitor indefinitely, -e create: fires when a new block device
+    # directory appears (kernel adds it on device plug-in / uevent ADD).
+    # -q: suppress startup banner. --format '%f': just the filename, we don't need it.
+    # We also run a background health-check loop alongside the event listener.
+    (
+        while true; do
+            sleep "$HEALTH_INTERVAL"
+            do_mount
+        done
+    ) &
+    HEALTH_PID=$!
+
+    inotifywait -m -q -e create /sys/block 2>/dev/null | while read -r _dir _event _dev; do
+        # Only react to block devices we care about (sd*, mmcblk1*)
+        case "$_dev" in
+            sd[a-z]*|mmcblk1*) do_mount ;;
+        esac
+    done
+
+    # inotifywait exited (shouldn't happen) — kill health loop and fall through to poll
+    kill "$HEALTH_PID" 2>/dev/null
+
+else
+    # Fallback: slow poll. With the sed fix in place this is now cheap (idempotent
+    # when everything is already mounted) and 60s is fine for a health check.
+    while true; do
+        sleep "$HEALTH_INTERVAL"
+        do_mount
+    done
+fi
