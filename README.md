@@ -26,7 +26,7 @@ Authored with ❤️ by **Rex Ackermann**.
 
 ---
 
-## 🌐 WebUI (KernelSU / APatch)
+## 🌐 WebUI (KernelSU / APatch / ReSukiSU)
 
 A built-in web interface is available directly from your SU Manager. No extra apps needed.
 
@@ -38,11 +38,12 @@ A built-in web interface is available directly from your SU Manager. No extra ap
 - **📋 Logs** — Live log viewer with colour-coded output, one-tap clear
 
 ### How to open
-1. Open **KernelSU** or **APatch**
+1. Open **KernelSU**, **APatch**, or **ReSukiSU**
 2. Find **Android LUKS Mounter** in the modules list
 3. Tap the **WebUI** button
 
 > The WebUI communicates with the `mounter` binary directly via the KSU/APatch shell bridge — no extra server required.
+> Compatible with standard KernelSU (`{stdout, stderr, errno}`), ReSukiSU (plain string return), and APatch/MMRL (`{out, err, code}`) bridge APIs.
 
 ## 🛠️ Prerequisites & Requirements
 > [!IMPORTANT]
@@ -127,5 +128,5 @@ Released under the **MIT License**. See `LICENSE` for details.
 | Contributor | Role |
 |-------------|------|
 | [Rex Ackermann](https://github.com/rexackermann) | Author & maintainer |
-| [mariayuno](https://github.com/mariayuno) | WebUI |
+| [mariayuno](https://github.com/mariayuno) | WebUI, bridge compatibility |
 
