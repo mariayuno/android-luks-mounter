@@ -564,12 +564,12 @@ mount_device() {
             if $NSENTER_BIN -t 1 -m -- mount | grep -q " ${_real_storage_chk} "; then
                 warn "$mnt_point is already correctly mounted (user view present)." && return 0
             fi
-            # Hardware is fine but user view is absent — skip re-mounting the
-            # block device and jump straight to bindfs creation below.
-            log "Hardware mounted correctly but user view missing — recreating bindfs only... 🩹"
-            TARGET_DEV="$device"
-            IS_LUKS=0
-            MOUNTED=1
+            # Hardware is fine but user view is absent.  Skip the block-device mount
+            # entirely and fall through to bindfs creation using the existing mount.
+            # NOTE: we cannot set MOUNTED=1 here — it gets reset to 0 at line ~740.
+            # Use a named flag instead and guard the whole mount block below.
+            log "Hardware mounted but user view missing — will recreate bindfs only. 🩹"
+            HARDWARE_ALREADY_MOUNTED=1
         else
             log "Conflict: $mnt_point is occupied by $current_dev. Clearing..."
             unmount_device "$label"
@@ -739,7 +739,13 @@ mount_device() {
     
     MOUNTED=0
     local NS_ENV="env PATH=$PATH LD_LIBRARY_PATH=$LD_LIBRARY_PATH LD_PRELOAD=$LD_PRELOAD"
-    
+
+    # ⚡ BINDFS-ONLY PATH: hardware already mounted (e.g. by vold at boot), user
+    # view was absent.  Skip all block-device mount attempts entirely.
+    if [ "${HARDWARE_ALREADY_MOUNTED:-0}" -eq 1 ]; then
+        MOUNTED=1
+    else
+
     # 🚫 Explicit Skip: BTRFS 
     local raw_fs=$("$BLKID_BIN" -o value -s TYPE "$TARGET_DEV")
     if [ "$raw_fs" = "btrfs" ]; then
@@ -774,6 +780,8 @@ mount_device() {
     [ $MOUNTED -eq 0 ] && for fs in $(cat /proc/filesystems | grep -v "nodev" | awk '{print $2}'); do
         run_cmd nsenter -t 1 -m -- $NS_ENV "$MOUNT_BIN" -t "$fs" "$TARGET_DEV" "$mnt_point" >/dev/null 2>&1 && MOUNTED=1 && break
     done
+
+    fi # end HARDWARE_ALREADY_MOUNTED guard
 
     # ❌ Handling Mount Failure
     if [ $MOUNTED -eq 0 ]; then
