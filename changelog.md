@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.5.45 — 2026-09-26
+### chore: version bump [auto]
+- CI auto-bump following PR #10 merge
+
+## v1.5.44 — 2026-09-26
+### chore: version bump [auto]
+- CI auto-bump
+
+## v1.5.43 — 2026-09-26
+### chore: version bump [auto]
+- CI auto-bump
+
+## v1.5.42 — 2026-09-26
+### chore: version bump [auto]
+- CI auto-bump
+
+## v1.5.41 — 2026-09-26
+### chore: version bump [auto]
+- CI auto-bump following WebUI merge
+
 ## v1.5.40 — 2026-09-26
 ### fix: WebUI bridge compatibility with ReSukiSU and other KernelSU forks (PR #10)
 - **🐛 WebUI now works on ReSukiSU**: some KernelSU forks return a plain `string` from `ksu.exec()` instead of the standard `{stdout, stderr, errno}` object — destructuring `{ stdout }` from a string always yields `undefined`, so every command silently received no output despite executing successfully as root

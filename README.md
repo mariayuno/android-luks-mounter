@@ -19,14 +19,12 @@ Authored with ❤️ by **Rex Ackermann**.
 - **🤖 Background Daemon**: Persistent polling service to handle hotplugging effortlessly.
 - **🪄 Dynamic Skeleton**: Automatically "blesses" mount points at boot for perfect permissions.
 - **🛡️ Safety Checks**: Intelligent protection against accidental mounting of system partitions.
-- **📦 Flashable Module**: One-click installation for KernelSU, APatch, and Magisk.
+- **📦 Flashable Module**: One-click installation for KernelSU, APatch, ReSukiSU, and Magisk.
+- **🌐 Built-in WebUI**: Full browser-based management interface, no extra apps needed.
 
 ---
 
-
----
-
-## 🌐 WebUI (KernelSU / APatch)
+## 🌐 WebUI (KernelSU / APatch / ReSukiSU)
 
 A built-in web interface is available directly from your SU Manager. No extra apps needed.
 
@@ -36,19 +34,32 @@ A built-in web interface is available directly from your SU Manager. No extra ap
 - **🔑 Keys** — Browse, generate, and delete LUKS keyfiles
 - **⚙️ Config** — Edit `mounter config` in-browser, install boot service, link binary
 - **📋 Logs** — Live log viewer with colour-coded output, one-tap clear
+- **🔐 Unlock** — Passphrase prompt for locked LUKS devices directly from the UI
 
 ### How to open
-1. Open **KernelSU** or **APatch**
+1. Open **KernelSU**, **APatch**, or **ReSukiSU**
 2. Find **Android LUKS Mounter** in the modules list
 3. Tap the **WebUI** button
 
-> The WebUI communicates with the `mounter` binary directly via the KSU/APatch shell bridge — no extra server required.
+> The WebUI communicates with the `mounter` binary directly via the shell bridge — no extra server required.
+
+### Compatibility
+The WebUI bridge layer is compatible with all major KernelSU-based managers:
+
+| Manager | Bridge API | Status |
+|---------|-----------|--------|
+| KernelSU | `{stdout, stderr, errno}` | ✅ |
+| ReSukiSU | plain string return | ✅ |
+| APatch | `{out, err, code}` | ✅ |
+| MMRL | `{out, err, code}` | ✅ |
+
+---
 
 ## 🛠️ Prerequisites & Requirements
 > [!IMPORTANT]
 > **Dependencies are mandatory for ALL installation methods!** Even if you use the flashable module, you must install the core tools in Termux.
 
-1. **🔑 Root Access**: Required for low-level block device operations (KernelSU, APatch, or Magisk).
+1. **🔑 Root Access**: Required for low-level block device operations (KernelSU, APatch, ReSukiSU, or Magisk).
 2. **📟 Termux Environment**: The engine that provides necessary libraries.
 3. **📦 Terminal Dependencies**:
    Open Termux and run:
@@ -64,7 +75,7 @@ A built-in web interface is available directly from your SU Manager. No extra ap
 
 ### Option 1: Flashable Module (Recommended)
 1. Download the latest `android-luks-mounter-vX.X.X.zip` from the [Releases](https://github.com/rexackermann/android-luks-mounter/releases).
-2. Flash it in your SU Manager (KernelSU, APatch, or Magisk).
+2. Flash it in your SU Manager (KernelSU, APatch, ReSukiSU, or Magisk).
 3. **Reboot**. This is required for the Dynamic Skeleton to initialize.
 
 ---
@@ -76,6 +87,9 @@ Once installed and rebooted, simply plug in your drive. The background service w
 1. Detect the drive within 5 seconds.
 2. Auto-unlock it if a key exists in `/data/adb/mounter/`.
 3. Mount it to your configured path (default: `/sdcard/ext/label`).
+
+### 🌐 WebUI Mode
+Open your SU Manager, find the module, and tap **WebUI**. From there you can mount, unmount, unlock LUKS volumes, manage keyfiles, edit config, and tail logs — all without touching a terminal.
 
 ### ⌨️ CLI Mode
 Open Termux and run:
@@ -101,7 +115,7 @@ STORAGE_PATH_abc_123="/storage/emulated/0/MyCustomFolder"
 ## ❓ FAQ & Troubleshooting
 
 ### **Q: My file manager says the drive is Read-Only!**
-**A:** This is usually because the "Magic Mount" trick didn't run. 
+**A:** This is usually because the "Magic Mount" trick didn't run.
 1. Ensure you have **rebooted** at least once after installation.
 2. Check if your path is inside your internal storage (e.g., `/sdcard/something`).
 3. Check the logs: `cat /data/local/tmp/mounter.log`.
@@ -112,12 +126,20 @@ STORAGE_PATH_abc_123="/storage/emulated/0/MyCustomFolder"
 ### **Q: How do I add an auto-unlock key?**
 **A:** Mount the drive once using a password. The script will ask if you want to generate a keyfile. If you say `y`, it will create a secure key in `/data/adb/mounter/` for future use.
 
+### **Q: The WebUI loads but nothing works / all panels are empty.**
+**A:** This can happen on some KernelSU forks (e.g. older ReSukiSU builds) where `ksu.exec()` returns a plain string instead of an object. Make sure you are on **v1.5.41 or later** which normalises the bridge response automatically. If you are already on a recent version, open the WebView console and run:
+```js
+(async()=>{ console.log(typeof await window.ksu.exec('id')) })()
+```
+It should log `string` or `object`. Either is handled. If `window.ksu` is `undefined`, the WebUI was not opened via the SU Manager's WebUI button.
+
 ---
 
 ## ⚖️ License
 Released under the **MIT License**. See `LICENSE` for details.
 
 ---
+
 *Created with ❤️ by [Rex Ackermann](https://github.com/rexackermann)*
 
 ---
@@ -127,5 +149,5 @@ Released under the **MIT License**. See `LICENSE` for details.
 | Contributor | Role |
 |-------------|------|
 | [Rex Ackermann](https://github.com/rexackermann) | Author & maintainer |
-| [mariayuno](https://github.com/mariayuno) | WebUI |
+| [mariayuno](https://github.com/mariayuno) | WebUI, bridge compatibility (ReSukiSU / APatch / MMRL) |
 
