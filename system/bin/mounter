@@ -842,15 +842,19 @@ mount_device() {
             "$mnt_point" "$real_storage"
         
         # 🧪 User View Verification
-        if ! $NSENTER_BIN -t 1 -m -- ls -1q "$target_storage" >/dev/null 2>&1; then
+        # NOTE: check real_storage (/data/media/0/...) not target_storage
+        # (/storage/emulated/0/...).  The latter goes through the FUSE emulated
+        # storage layer which is unavailable before first unlock on FBE devices,
+        # causing a false "unstable" result that immediately tears down the bindfs.
+        if ! $NSENTER_BIN -t 1 -m -- ls -1q "$real_storage" >/dev/null 2>&1; then
              warn "Bindfs view unstable (I/O Error). Detaching..."
-             run_cmd nsenter -t 1 -m -- "$UMOUNT_BIN" -l "$target_storage"
+             run_cmd nsenter -t 1 -m -- "$UMOUNT_BIN" -l "$real_storage"
              
              # Try 2: Fallback to standard bind mount
              log "Fallback: Creating standard bind mount (ownership mapping disabled)..."
-             run_cmd nsenter -t 1 -m -- mount --bind "$mnt_point" "$target_storage"
+             run_cmd nsenter -t 1 -m -- mount --bind "$mnt_point" "$real_storage"
              
-             if ! $NSENTER_BIN -t 1 -m -- ls -1q "$target_storage" >/dev/null 2>&1; then
+             if ! $NSENTER_BIN -t 1 -m -- ls -1q "$real_storage" >/dev/null 2>&1; then
                   error "Fallback mount also failed. User view unavailable."
                   send_notification "Android Mounter" "User View Failed for $(basename "$device") ⚠️" "$dev_tag"
              else

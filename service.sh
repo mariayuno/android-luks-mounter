@@ -10,8 +10,21 @@
 # 1. On File-Based Encryption (FBE) devices (modern Android), the /sdcard partition
 #    and many encrypted storage areas are NOT accessible until the user enters their PIN/Pattern.
 # 2. Waiting for /sdcard/Android ensures the storage framework is fully initialized.
+# Wait for the Android framework to be ready.
 until [ -d "/sdcard/Android" ]; do
-  sleep 1 # re-check every second
+  sleep 1
+done
+
+# On FBE (File-Based Encryption) devices, /sdcard/Android can exist before the
+# user has entered their PIN/pattern (Direct Boot mode).  The FUSE emulated
+# storage layer (/storage/emulated/0) is NOT available until after first unlock,
+# so any bindfs view that targets /storage/emulated/0/... will fail the ls
+# verification check and be immediately torn down.
+#
+# Wait until CE (Credential Encrypted) storage is unlocked by polling the
+# system property that Android sets after the user authenticates.
+until getprop sys.user.0.ce_available 2>/dev/null | grep -q "true"; do
+  sleep 1
 done
 
 # --- 🚀 Main Service Loop ---
