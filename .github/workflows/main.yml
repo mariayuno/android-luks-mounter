@@ -1,0 +1,109 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── Auto-bump version on every commit ─────────────────────────────────
+      - name: Compute & bump version
+        id: ver
+        run: |
+          CURRENT=$(grep '^version=' module.prop | cut -d= -f2)
+          BASE=$(echo "$CURRENT" | sed 's/^v//;s/-.*//')
+          MAJOR=$(echo "$BASE" | cut -d. -f1)
+          MINOR=$(echo "$BASE" | cut -d. -f2)
+          PATCH=$(echo "$BASE" | cut -d. -f3)
+          PATCH=$((PATCH + 1))
+          VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          CODE="${MAJOR}${MINOR}${PATCH}"
+          ZIP="android-luks-mounter-${VERSION}.zip"
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE"       >> "$GITHUB_OUTPUT"
+          echo "zip=$ZIP"         >> "$GITHUB_OUTPUT"
+          echo "Bumped: $CURRENT → $VERSION ($CODE)"
+
+      - name: Write version to module.prop and update.json
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          CODE="${{ steps.ver.outputs.code }}"
+          ZIP="${{ steps.ver.outputs.zip }}"
+
+          sed -i "s|^version=.*|version=${VERSION}|"       module.prop
+          sed -i "s|^versionCode=.*|versionCode=${CODE}|"  module.prop
+
+          cat > update.json << ENDJSON
+          {
+              "version": "${VERSION}",
+              "versionCode": ${CODE},
+              "zipUrl": "https://github.com/${{ github.repository }}/releases/download/${VERSION}/${ZIP}",
+              "changelog": "https://raw.githubusercontent.com/${{ github.repository }}/main/changelog.md"
+          }
+          ENDJSON
+
+      # ── Build ZIP ──────────────────────────────────────────────────────────
+      - name: Build flashable ZIP
+        id: build
+        run: |
+          ZIP="${{ steps.ver.outputs.zip }}"
+          zip -r9 "$ZIP" \
+            module.prop customize.sh post-fs-data.sh service.sh action.sh \
+            system/ webroot/ LICENSE README.md \
+            -x ".*" -x "__MACOSX" -x "*.git*"
+          echo "Built: $(ls -lh $ZIP | awk '{print $5, $9}')"
+
+      # ── Upload artifact (PRs + main) ───────────────────────────────────────
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.ver.outputs.zip }}
+          path: ${{ steps.ver.outputs.zip }}
+          retention-days: 30
+
+      # ── Commit version bump & create release (main only, not PRs) ─────────
+      - name: Commit version bump
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add module.prop update.json
+          git diff --cached --quiet || git commit -m "chore: bump version to ${{ steps.ver.outputs.version }} [skip ci]"
+          git push origin main
+
+      - name: Create GitHub Release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.version }}
+          name: ${{ steps.ver.outputs.version }}
+          body: |
+            ## Android LUKS Mounter ${{ steps.ver.outputs.version }}
+
+            Auto-built from commit ${{ github.sha }} by @${{ github.actor }}
+
+            ### Install
+            Flash `${{ steps.ver.outputs.zip }}` in KernelSU, APatch, or Magisk then reboot.
+
+            ### Includes
+            - `mounter` binary
+            - KernelSU/APatch WebUI
+            - Auto-mount boot service
+          files: ${{ steps.ver.outputs.zip }}
+          draft: false
+          prerelease: false
