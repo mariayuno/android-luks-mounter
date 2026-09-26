@@ -30,12 +30,11 @@ do_mount() {
 do_mount
 
 # Prefer inotifywait (Termux: pkg install inotify-tools) for zero-overhead uevent
-# detection on /sys/block. Falls back to a slow poll if not installed.
+# detection on /dev/block. /sys/block does not fire inotify events on most Android
+# kernels; /dev/block does. Falls back to a slow poll if not installed.
 if [ -x "$INOTIFYWAIT" ]; then
-    # inotifywait -m: monitor indefinitely, -e create: fires when a new block device
-    # directory appears (kernel adds it on device plug-in / uevent ADD).
-    # -q: suppress startup banner. --format '%f': just the filename, we don't need it.
-    # We also run a background health-check loop alongside the event listener.
+    # -e create: device node added (plug-in). -e delete: node removed (unplug),
+    # caught by the health poll which will see the mount gone and clean up.
     (
         while true; do
             sleep "$HEALTH_INTERVAL"
@@ -44,8 +43,7 @@ if [ -x "$INOTIFYWAIT" ]; then
     ) &
     HEALTH_PID=$!
 
-    "$INOTIFYWAIT" -m -q -e create /sys/block 2>/dev/null | while read -r _dir _event _dev; do
-        # Only react to block devices we care about (sd*, mmcblk1*)
+    "$INOTIFYWAIT" -m -q -e create /dev/block 2>/dev/null | while read -r _dir _event _dev; do
         case "$_dev" in
             sd[a-z]*|mmcblk1*) do_mount ;;
         esac
