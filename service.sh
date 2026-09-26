@@ -2,10 +2,11 @@
 # 🤖 Android LUKS Mounter Service Script
 # 👤 Author: Rex Ackermann
 # 📝 Purpose: Event-driven service that mounts/unmounts drives on uevent with
-#    a lock to prevent concurrent mounter runs, and a health-check poll fallback.
+#    coalesced triggering (at most one running + one pending) and a health-check poll.
 
 LOG_FILE="/data/local/tmp/mounter.log"
-LOCK_FILE="/data/local/tmp/mounter.lock"
+LOCK_FILE="/data/local/tmp/mounter.lock"  # held by the running mounter instance
+PENDING_FILE="/data/local/tmp/mounter.pending"  # exists while one trigger is waiting
 HEALTH_INTERVAL=60
 INOTIFYWAIT="/data/data/com.termux/files/usr/bin/inotifywait"
 
@@ -19,29 +20,38 @@ rotate_log() {
         tail -n 10000 "$LOG_FILE" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "$LOG_FILE"
 }
 
-# --- 🔒 Locked Mount ---
-# Uses a lockfile so concurrent triggers (e.g. sda + sda1 firing together) don't
-# run two mounter instances simultaneously. The second caller waits until the
-# first finishes, then runs once to pick up anything the first missed.
+# --- 🔒 Coalesced Mount Trigger ---
+# States:
+#   nobody holds LOCK       -> acquire it, run immediately
+#   LOCK held, no PENDING   -> create PENDING, wait for LOCK, run once, clear PENDING
+#   LOCK held, PENDING set  -> drop (a run is already queued, it will see current state)
 do_mount() {
     rotate_log
-    # Acquire lock — wait up to 60s then give up to avoid a stuck lock blocking forever.
-    local waited=0
-    while ! mkdir "$LOCK_FILE" 2>/dev/null; do
-        sleep 1
-        waited=$((waited + 1))
-        [ "$waited" -ge 60 ] && rm -rf "$LOCK_FILE" && break
-    done
-    /system/bin/mounter --all >> "$LOG_FILE" 2>&1
-    rm -rf "$LOCK_FILE"
+
+    if mkdir "$LOCK_FILE" 2>/dev/null; then
+        # Fast path: no one running, go immediately.
+        /system/bin/mounter --all >> "$LOG_FILE" 2>&1
+        rm -rf "$LOCK_FILE"
+    elif mkdir "$PENDING_FILE" 2>/dev/null; then
+        # One run in progress, queue ourselves as the single pending waiter.
+        # Wait for the lock with a 60s safety timeout against a stuck lock.
+        local waited=0
+        while ! mkdir "$LOCK_FILE" 2>/dev/null; do
+            sleep 1
+            waited=$((waited + 1))
+            [ "$waited" -ge 60 ] && rm -rf "$LOCK_FILE" && break
+        done
+        rm -rf "$PENDING_FILE"
+        /system/bin/mounter --all >> "$LOG_FILE" 2>&1
+        rm -rf "$LOCK_FILE"
+    fi
+    # else: LOCK held AND PENDING exists -> drop this trigger silently.
 }
 
 # --- 🚀 Main ---
-# Run once at boot after unlock to catch anything vold grabbed before us.
 do_mount
 
 if [ -x "$INOTIFYWAIT" ]; then
-    # Health-check poll runs alongside event listener to catch silent bindfs failures.
     (
         while true; do
             sleep "$HEALTH_INTERVAL"
@@ -50,9 +60,6 @@ if [ -x "$INOTIFYWAIT" ]; then
     ) &
     HEALTH_PID=$!
 
-    # Watch CREATE (plug-in) and DELETE (unplug) on /dev/block.
-    # On unplug, mounter --all calls cleanup_stale_mounts() which tears down
-    # orphaned bindfs views and LUKS mappers whose backing device is gone.
     "$INOTIFYWAIT" -m -q -e create -e delete /dev/block 2>/dev/null | while read -r _dir _event _dev; do
         case "$_dev" in
             sd[a-z]*|mmcblk1*) do_mount ;;
