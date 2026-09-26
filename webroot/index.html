@@ -703,7 +703,16 @@ async function sh(cmd) {
   }
   try {
     const r = await ksu.exec(cmd);
-    return r;
+    // Some KSU forks (ReSukiSU, etc.) return a plain string instead of
+    // {stdout, stderr, errno} — normalise so destructuring always works
+    if (typeof r === 'string') {
+      return { stdout: r, stderr: '', errno: 0 };
+    }
+    return {
+      stdout: r.stdout ?? r.out  ?? '',
+      stderr: r.stderr ?? r.err  ?? '',
+      errno:  r.errno  ?? r.code ?? 0,
+    };
   } catch(e) {
     return { stdout: '', stderr: String(e), errno: 1 };
   }
