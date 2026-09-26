@@ -559,7 +559,7 @@ mount_device() {
             # here would silently skip bindfs creation and leave User View as "-".
             local _real_storage_chk="$target_storage"
             if [[ "$target_storage" == "/storage/emulated/0"* ]] || [[ "$target_storage" == "/sdcard"* ]]; then
-                _real_storage_chk=$(echo "$target_storage" | sed -E 's|^(/storage/emulated/0|/sdcard)|/data/media/0|')
+                _real_storage_chk=$(echo "$target_storage" | sed -E 's|^(/storage/emulated/0\|/sdcard)|/data/media/0|')
             fi
             if $NSENTER_BIN -t 1 -m -- mount | grep -q " ${_real_storage_chk} "; then
                 warn "$mnt_point is already correctly mounted (user view present)." && return 0
