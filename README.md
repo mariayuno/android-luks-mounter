@@ -15,8 +15,8 @@ Authored with ❤️ by **Rex Ackermann**.
 ## 🌟 Key Features
 - **🔓 LUKS Support**: Real-time unlocking and mounting of encrypted volumes.
 - **📁 Filesystem Versatility**: Supports NTFS, ExFAT, BTRFS, F2FS, VFAT, and more.
-- **⚡ Auto-Mounting**: Automatically detects and mounts connected OTG and SD cards.
-- **🤖 Background Daemon**: Persistent polling service to handle hotplugging effortlessly.
+- **⚡ Auto-Mounting**: Automatically detects and mounts connected OTG and SD cards on plug-in, cleans up on unplug.
+- **🤖 Event-Driven Daemon**: inotify-based service reacts instantly to block device events with coalesced triggering; falls back to a 60 s health-check poll when `inotify-tools` is unavailable.
 - **🪄 Dynamic Skeleton**: Automatically "blesses" mount points at boot for perfect permissions.
 - **🛡️ Safety Checks**: Intelligent protection against accidental mounting of system partitions.
 - **📦 Flashable Module**: One-click installation for KernelSU, APatch, ReSukiSU, and Magisk.
@@ -67,6 +67,7 @@ The WebUI bridge layer is compatible with all major KernelSU-based managers:
    pkg update && pkg upgrade
    pkg install root-repo
    pkg install cryptsetup bindfs util-linux mount-utils blk-utils
+   pkg install inotify-tools   # recommended: enables instant plug/unplug detection
    ```
 
 ---
@@ -84,9 +85,10 @@ The WebUI bridge layer is compatible with all major KernelSU-based managers:
 
 ### 📁 Automatic Mode (Plug & Play)
 Once installed and rebooted, simply plug in your drive. The background service will:
-1. Detect the drive within 5 seconds.
+1. Detect the drive instantly via inotify on `/dev/block` (requires `pkg install inotify-tools`), or within 60 s via the health-check poll if not installed.
 2. Auto-unlock it if a key exists in `/data/adb/mounter/`.
 3. Mount it to your configured path (default: `/sdcard/ext/label`).
+4. Clean up bindfs views and LUKS mappers automatically on unplug.
 
 ### 🌐 WebUI Mode
 Open your SU Manager, find the module, and tap **WebUI**. From there you can mount, unmount, unlock LUKS volumes, manage keyfiles, edit config, and tail logs — all without touching a terminal.
