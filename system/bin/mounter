@@ -453,7 +453,9 @@ unmount_device() {
     log "Unmounting $label from all namespaces..."
 
     # 🔓 1. Kill all bindfs views for this label in the GLOBAL namespace.
-    $NSENTER_BIN -t 1 -m -- cat /proc/mounts | grep "/storage/emulated/0/.*$label " | awk '{print $2}' | while read -r sp; do
+    # NOTE: mount_device() maps /storage/emulated/0 → /data/media/0 before calling
+    # bindfs, so we must search both prefixes or orphaned mounts are never cleaned up.
+    $NSENTER_BIN -t 1 -m -- cat /proc/mounts | grep -E "(/storage/emulated/0|/data/media/0)/[^ ]*${label}( |/)" | awk '{print $2}' | while read -r sp; do
         run_cmd nsenter -t 1 -m -- umount -l "$sp" && log "Detached user view: $sp"
     done
 
@@ -551,7 +553,23 @@ mount_device() {
         fi
 
         if [ $conflict -eq 0 ]; then
-             warn "$mnt_point is already correctly mounted." && return 0
+            # Hardware is at the right place — but check the user view too.
+            # If vold mounted the hardware at boot before our service ran, the
+            # bindfs user view will be missing even though conflict=0.  Returning
+            # here would silently skip bindfs creation and leave User View as "-".
+            local _real_storage_chk="$target_storage"
+            if [[ "$target_storage" == "/storage/emulated/0"* ]] || [[ "$target_storage" == "/sdcard"* ]]; then
+                _real_storage_chk=$(echo "$target_storage" | sed -E 's|^(/storage/emulated/0|/sdcard)|/data/media/0|')
+            fi
+            if $NSENTER_BIN -t 1 -m -- mount | grep -q " ${_real_storage_chk} "; then
+                warn "$mnt_point is already correctly mounted (user view present)." && return 0
+            fi
+            # Hardware is fine but user view is absent — skip re-mounting the
+            # block device and jump straight to bindfs creation below.
+            log "Hardware mounted correctly but user view missing — recreating bindfs only... 🩹"
+            TARGET_DEV="$device"
+            IS_LUKS=0
+            MOUNTED=1
         else
             log "Conflict: $mnt_point is occupied by $current_dev. Clearing..."
             unmount_device "$label"
