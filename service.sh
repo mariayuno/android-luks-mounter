@@ -1,57 +1,76 @@
 #!/system/bin/sh
 # 🤖 Android LUKS Mounter Service Script
 # 👤 Author: Rex Ackermann
-# 📝 Purpose: This script runs as a background service (daemon) to automatically
-#    detect and mount drives when they are plugged in.
+# 📝 Purpose: Event-driven service that mounts/unmounts drives on uevent with
+#    coalesced triggering (at most one running + one pending) and a health-check poll.
 
-# --- ⏳ Boot Wait Loop ---
-# Wait for the Android boot process to settle and for the user to unlock the screen.
-# Significance:
-# 1. On File-Based Encryption (FBE) devices (modern Android), the /sdcard partition
-#    and many encrypted storage areas are NOT accessible until the user enters their PIN/Pattern.
-# 2. Waiting for /sdcard/Android ensures the storage framework is fully initialized.
-# Wait for the Android framework to be ready.
-until [ -d "/sdcard/Android" ]; do
-  sleep 1
-done
+LOG_FILE="/data/local/tmp/mounter.log"
+LOCK_FILE="/data/local/tmp/mounter.lock"  # held by the running mounter instance
+PENDING_FILE="/data/local/tmp/mounter.pending"  # exists while one trigger is waiting
+HEALTH_INTERVAL=60
+INOTIFYWAIT="/data/data/com.termux/files/usr/bin/inotifywait"
 
-# On FBE (File-Based Encryption) devices, /sdcard/Android can exist before the
-# user has entered their PIN/pattern (Direct Boot mode).  The FUSE emulated
-# storage layer (/storage/emulated/0) is NOT available until after first unlock,
-# so any bindfs view that targets /storage/emulated/0/... will fail the ls
-# verification check and be immediately torn down.
-#
-# Wait until CE (Credential Encrypted) storage is unlocked by polling the
-# system property that Android sets after the user authenticates.
-until getprop sys.user.0.ce_available 2>/dev/null | grep -q "true"; do
-  sleep 1
-done
+# --- ⏳ Boot Wait ---
+until [ -d "/sdcard/Android" ]; do sleep 1; done
+until getprop sys.user.0.ce_available 2>/dev/null | grep -q "true"; do sleep 1; done
 
-# --- 🚀 Main Service Loop ---
-# Global paths (PATH, LD_LIBRARY_PATH) are verified and set by the mounter script itself.
-# We call the main script with the '--all' flag to trigger a full scan-and-mount pass.
-
-while true; do
-    # 📏 Log Management:
-    # We divert output to a log file for debugging.
-    LOG_FILE="/data/local/tmp/mounter.log"
-    
-    # 🧹 Auto-Rotation:
-    # To prevent the log file from consuming all available space in /data/local/tmp,
-    # we check its size. If it exceeds 10,000 lines, we truncate it.
-    if [ -f "$LOG_FILE" ] && [ "$(wc -l < "$LOG_FILE")" -gt 10000 ]; then
-        # Keep the last 10,000 lines (most recent) and discard the rest.
+# --- 📏 Log Rotation ---
+rotate_log() {
+    [ -f "$LOG_FILE" ] && [ "$(wc -l < "$LOG_FILE")" -gt 10000 ] && \
         tail -n 10000 "$LOG_FILE" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "$LOG_FILE"
-    fi
+}
 
-    # ⚡ Execute the Mount Scan:
-    # 1. Calls /system/bin/mounter
-    # 2. '--all' flag tells it to scan all block devices and mount any known/configured ones.
-    # 3. '>> "$LOG_FILE" 2>&1' captures both Standard Output and Errors to the log.
-    /system/bin/mounter --all >> "$LOG_FILE" 2>&1
-    
-    # ⏱️ Polling Interval:
-    # Wait 10 seconds before scanning again.
-    # This balance ensures drives are picked up relatively quickly without burning CPU.
-    sleep 10
-done
+# --- 🔒 Coalesced Mount Trigger ---
+# States:
+#   nobody holds LOCK       -> acquire it, run immediately
+#   LOCK held, no PENDING   -> create PENDING, wait for LOCK, run once, clear PENDING
+#   LOCK held, PENDING set  -> drop (a run is already queued, it will see current state)
+do_mount() {
+    rotate_log
+
+    if mkdir "$LOCK_FILE" 2>/dev/null; then
+        # Fast path: no one running, go immediately.
+        /system/bin/mounter --all >> "$LOG_FILE" 2>&1
+        rm -rf "$LOCK_FILE"
+    elif mkdir "$PENDING_FILE" 2>/dev/null; then
+        # One run in progress, queue ourselves as the single pending waiter.
+        # Wait for the lock with a 60s safety timeout against a stuck lock.
+        local waited=0
+        while ! mkdir "$LOCK_FILE" 2>/dev/null; do
+            sleep 1
+            waited=$((waited + 1))
+            [ "$waited" -ge 60 ] && rm -rf "$LOCK_FILE" && break
+        done
+        rm -rf "$PENDING_FILE"
+        /system/bin/mounter --all >> "$LOG_FILE" 2>&1
+        rm -rf "$LOCK_FILE"
+    fi
+    # else: LOCK held AND PENDING exists -> drop this trigger silently.
+}
+
+# --- 🚀 Main ---
+do_mount
+
+if [ -x "$INOTIFYWAIT" ]; then
+    (
+        while true; do
+            sleep "$HEALTH_INTERVAL"
+            do_mount
+        done
+    ) &
+    HEALTH_PID=$!
+
+    "$INOTIFYWAIT" -m -q -e create -e delete /dev/block 2>/dev/null | while read -r _dir _event _dev; do
+        case "$_dev" in
+            sd[a-z]*|mmcblk1*) do_mount ;;
+        esac
+    done
+
+    kill "$HEALTH_PID" 2>/dev/null
+
+else
+    while true; do
+        sleep "$HEALTH_INTERVAL"
+        do_mount
+    done
+fi

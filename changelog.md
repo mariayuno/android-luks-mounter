@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.5.50 — 2026-09-27
+### fix: event-driven service + sed fix + coalesced triggering (PR #12)
+- **🐛 Remount loop fixed**: `sed -E 's|^(/storage/emulated/0|/sdcard)|...|'` had an unescaped `|` in the alternation, causing Android's `sed` to error on every poll iteration — `_real_storage_chk` was always empty, the user-view check never passed, and bindfs was recreated every 10 s indefinitely. Fixed by escaping the pipe: `\|`
+- **⚡ Event-driven service**: replaced the 10 s blind poll loop with `inotifywait` watching `/dev/block` (not `/sys/block` — inotify does not fire on sysfs on Android kernels) for `CREATE` and `DELETE` events, filtered to `sd[a-z]*` and `mmcblk1*`
+- **🔒 Coalesced triggering**: a plug-in event fires multiple nodes (`sda` + `sda1`, `mmcblk1` + `mmcblk1p1`) simultaneously — added a two-slot gate (one running + one pending) so concurrent triggers are coalesced into at most two sequential runs; all further triggers are dropped until the queue drains. Prevents a storm of 100 events from queuing 100 mounter runs
+- **🔌 Unplug cleanup**: `DELETE` events now trigger `mounter --all` immediately, which calls `cleanup_stale_mounts()` to tear down orphaned bindfs views and LUKS mappers — previously unplug was only caught by the health-check poll up to 60 s later
+- **⏱️ Health-check poll**: kept at 60 s alongside the event listener to catch silent bindfs failures that events cannot observe
+- **📦 Explicit Termux path**: `inotifywait` referenced by absolute path (`/data/data/com.termux/files/usr/bin/inotifywait`) — `command -v` is unreliable before Termux PATH is injected by the mounter binary
+- **Contributor**: [@mariayuno](https://github.com/mariayuno)
+
 ## v1.5.45 — 2026-09-26
 ### chore: version bump [auto]
 - CI auto-bump following PR #10 merge
