@@ -1,126 +1,644 @@
-# 🚀 Android LUKS Mounter ✨
+<div align="center">
 
-Professional storage management for **LUKS-encrypted** and **plain** drives on Android. This project brings desktop-class security and advanced mounting features to your mobile device.
-
-Authored with ❤️ by **Rex Ackermann**.
-
-<!-- INSTALL_START -->
-<table><tr><td valign="top" width="65%">
-
-### Install (root shell one-liner)
-
-The **online ZIP** downloads dependencies at flash time (needs network).
-
-<details open>
-<summary><b>KernelSU</b></summary>
-
-```sh
-curl -Lo /tmp/mounter.zip https://github.com/rexackermann/android-luks-mounter/releases/latest/download/android-luks-mounter-v1.5.63.zip && /data/adb/ksud module install /tmp/mounter.zip
 ```
-</details>
-
-<details>
-<summary><b>APatch</b></summary>
-
-```sh
-curl -Lo /tmp/mounter.zip https://github.com/rexackermann/android-luks-mounter/releases/latest/download/android-luks-mounter-v1.5.63.zip && apd module install /tmp/mounter.zip
+█░░ █░█ █▄▀ █▀   █▀▄▀█ █▀█ █░█ █▄░█ ▀█▀ █▀▀ █▀█
+█▄▄ █▄█ █░█ ▄█   █░▀░█ █▄█ █▄█ █░▀█ ░█░ ██▄ █▀▄
 ```
-</details>
 
-<details>
-<summary><b>Magisk</b></summary>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/cryptsetup%20%2B%20Android%27s%20storage%20layer%2C%20finally%20made%20to%20cooperate-Mount%20encrypted%20storage.%20Manage%20it.%20Own%20it.-7c3aed?style=for-the-badge&labelColor=22c55e">
+  <source media="(prefers-color-scheme: light)" srcset="https://img.shields.io/badge/cryptsetup%20%2B%20Android%27s%20storage%20layer%2C%20finally%20made%20to%20cooperate-Mount%20encrypted%20storage.%20Manage%20it.%20Own%20it.-6d28d9?style=for-the-badge&labelColor=3ddc84">
+  <img alt="Android LUKS Mounter — Mount encrypted storage. Manage it. Own it." src="https://img.shields.io/badge/cryptsetup%20%2B%20Android%27s%20storage%20layer%2C%20finally%20made%20to%20cooperate-Mount%20encrypted%20storage.%20Manage%20it.%20Own%20it.-6d28d9?style=for-the-badge&labelColor=3ddc84" width="100%">
+</picture>
 
-```sh
-curl -Lo /tmp/mounter.zip https://github.com/rexackermann/android-luks-mounter/releases/latest/download/android-luks-mounter-v1.5.63.zip && magisk --install-module /tmp/mounter.zip
-```
-</details>
+**The missing block-device encryption manager for rooted Android.**  
+`cryptsetup` · `bindfs` · `nsenter` · `namespace-aware` · `event-driven` · `WebUI`
+<br>
+<!-- Dynamic version & download stats — auto-updates from GitHub Releases API -->
+[![Latest Release](https://img.shields.io/github/v/release/rexackermann/android-luks-mounter?display_name=tag&sort=semver&style=flat-square&label=release&color=7c3aed)](https://github.com/rexackermann/android-luks-mounter/releases/latest)
+[![Total Downloads](https://img.shields.io/github/downloads/rexackermann/android-luks-mounter/total?style=flat-square&color=7c3aed&label=downloads)](https://github.com/rexackermann/android-luks-mounter/releases)
+[![Release Date](https://img.shields.io/github/release-date/rexackermann/android-luks-mounter?style=flat-square&color=6d28d9)](https://github.com/rexackermann/android-luks-mounter/releases/latest)
+<!-- Repository health — auto-updates -->
+[![Stars](https://img.shields.io/github/stars/rexackermann/android-luks-mounter?style=flat-square&color=f59e0b)](https://github.com/rexackermann/android-luks-mounter/stargazers)
+[![Issues](https://img.shields.io/github/issues/rexackermann/android-luks-mounter?style=flat-square&color=ef4444)](https://github.com/rexackermann/android-luks-mounter/issues)
+[![Last Commit](https://img.shields.io/github/last-commit/rexackermann/android-luks-mounter?style=flat-square&color=0891b2)](https://github.com/rexackermann/android-luks-mounter/commits/main)
+[![License](https://img.shields.io/github/license/rexackermann/android-luks-mounter?style=flat-square&color=2563eb)](LICENSE)
+<!-- Platform & tooling -->
+[![Platform](https://img.shields.io/badge/platform-Android-3ddc84?style=flat-square&logo=android&logoColor=white)](https://github.com/rexackermann/android-luks-mounter)
+[![Root](https://img.shields.io/badge/root-KernelSU%20%7C%20APatch%20%7C%20Magisk%20%7C%20ReSukiSU-ef4444?style=flat-square)](https://github.com/rexackermann/android-luks-mounter)
+[![Termux](https://img.shields.io/badge/Termux-required-f59e0b?style=flat-square)](https://github.com/termux/termux-app)
+[![WebUI](https://img.shields.io/badge/WebUI-built--in-0891b2?style=flat-square)](https://github.com/rexackermann/android-luks-mounter)
+<br>
+[**Releases**](https://github.com/rexackermann/android-luks-mounter/releases) · [**Changelog**](changelog.md) · [**Report a bug**](https://github.com/rexackermann/android-luks-mounter/issues/new)
 
-</td><td valign="top" align="right" width="35%">
-
-<p align="right">
-<img src="https://img.shields.io/badge/version-v1.5.63-7c3aed?style=for-the-badge&logo=github&logoColor=white"><br>
-<img src="https://img.shields.io/badge/versionCode-1563-2563eb?style=for-the-badge"><br>
-<img src="https://img.shields.io/badge/arm64%20%2B%20arm-supported-0891b2?style=for-the-badge"><br>
-<img src="https://img.shields.io/badge/Termux-required-ef4444?style=for-the-badge">
-</p>
-
-</td></tr></table>
-
-<!-- INSTALL_END -->
+</div>
 
 ---
 
-## 🌟 Key Features
+> [!IMPORTANT]
+> The README is **release-aware**: repository badges pull live metadata, while the installation block below is regenerated by CI whenever a release is built. The workflow publishes a versioned ZIP and injects the matching version into this block.
 
-- **🔓 LUKS Support** — Unlock and mount encrypted removable storage.
-- **📁 Filesystem Support** — NTFS, exFAT, VFAT, F2FS, ext filesystems, and more where supported by the device.
-- **⚡ Auto-Mounting** — Detects OTG and SD-card devices on plug-in and cleans them up on unplug.
-- **🤖 Event-Driven Daemon** — Uses inotify with a 60-second health-check fallback.
-- **🛡️ Safety Checks** — Rejects internal, loop, and device-mapper devices and verifies mounts after creation.
-- **🌐 Built-in WebUI** — Manage devices, keys, configuration, and logs without a separate server.
+---
 
-## 🌐 WebUI
+## The problem this solves
 
-Open the module's **WebUI** entry in KernelSU, APatch, or ReSukiSU. The bridge supports KernelSU object responses, ReSukiSU strings, and APatch/MMRL response objects.
+Android exposes removable block devices. Rooted users who want real control over them immediately collide with at least five independent layers: `cryptsetup`, kernel filesystem drivers, mount namespaces, Android's `/mnt/media_rw` layout, and the emulated `/storage/emulated/0` FUSE layer.
 
-## 🛠️ Requirements
+Handling one layer manually is doable. Keeping all five coherent — across hotplug events, reboots, LUKS keyslots, and ROM-specific FUSE semantics — is the problem this project solves.
 
-- Rooted Android: KernelSU, APatch, ReSukiSU, or Magisk
-- Termux from [F-Droid](https://f-droid.org/packages/com.termux/), not the Play Store build
-- Required tools: `cryptsetup`, `bindfs`, `blkid`, `nsenter`, `mount`, and `umount`
-- Recommended: `inotify-tools`
-- Optional: `ntfs-3g`
+```
+                        ┌────────────────────────────────┐
+                        │          Android device        │
+                        │  KernelSU / APatch / Magisk    │
+                        │         / ReSukiSU             │
+                        └───────────────┬────────────────┘
+                                        │ 
+                                        │ root shell
+                                        │ 
+                                        ▼
+┌─────────────────┐    ┌──────────────────────────────────┐    ┌────────────────┐
+│  SD / USB-OTG   │──▶│       /system/bin/mounter        │──▶│   cryptsetup   │
+│  /dev/block/*   │    │  scan · unlock · mount · notify  │    │   LUKS open    │
+└─────────────────┘    └────────────────┬─────────────────┘    └────────────────┘
+                                        │ 
+                                        │ nsenter -t 1 -m
+                                        │
+                              global mount namespace
+                                        │
+                       ┌────────────────▼──────────────────┐
+                       │  /mnt/media_rw/<label>            │
+                       │  physical filesystem mount        │
+                       └────────────────┬──────────────────┘
+                                        │ 
+                                        │ bindfs (uid/gid 1023, 0770+setgid)
+                                        │ 
+                                        ▼
+                       ┌───────────────────────────────────┐
+                       │  /storage/emulated/0/ext/<label>  │
+                       │  Android file-manager user view   │
+                       └───────────────────────────────────┘
+```
+
+**The physical mount and the Android-visible path are two deliberately separate layers.** Both are managed, verified, and cleaned up independently. This distinction is not an implementation detail — it is the core design.
+
+---
+
+## Feature map
+
+<table>
+<tr><th>Area</th><th>What is implemented</th></tr>
+<tr><td>🔐 <strong>LUKS encryption</strong></td><td>UUID detection with <code>cryptsetup isLuks</code>, mapper creation, keyfile unlock (UUID-keyed), interactive passphrase fallback, new-key enrollment post-unlock</td></tr>
+<tr><td>💾 <strong>Plain storage</strong></td><td>Mounts non-LUKS removable partitions using detected filesystem type with multi-stage fallback</td></tr>
+<tr><td>🔌 <strong>Hotplug / inotify</strong></td><td><code>inotifywait</code> watches <code>/dev/block</code> for <code>CREATE</code> and <code>DELETE</code> events; pattern-filtered to removable families only</td></tr>
+<tr><td>🧠 <strong>Event coalescing</strong></td><td>One active run + one pending run; bursty partition/disk uevents do not spawn a process storm</td></tr>
+<tr><td>🩺 <strong>Health polling</strong></td><td>60-second safety poll active alongside event monitoring; catches failures that produce no device-node event</td></tr>
+<tr><td>🧹 <strong>Unplug cleanup</strong></td><td>Immediate on DELETE: removes bindfs views, unmounts hardware mount points, closes stale LUKS mappers</td></tr>
+<tr><td>🛡️ <strong>Two-strike blocklist</strong></td><td>Two failed mount/verify attempts → device blocked until replug or manual WebUI unblock</td></tr>
+<tr><td>👻 <strong>Ghost-device guard</strong></td><td>Reads <code>/sys/class/block/&lt;dev&gt;/size</code>; rejects zero-size or missing nodes before any mount attempt</td></tr>
+<tr><td>✅ <strong>Mount verification</strong></td><td>Directory listing immediately after <code>mount(8)</code>; I/O failure = unstable mount → unmount + strike recorded</td></tr>
+<tr><td>📂 <strong>Android user view</strong></td><td><code>bindfs</code> maps view to UID/GID <code>1023</code> (<code>media_rw</code>), mode <code>0770</code> + setgid; fallback to standard bind mount</td></tr>
+<tr><td>🔑 <strong>Key management</strong></td><td>UUID-keyed files, configured per-device paths, random 512-byte key generation, keyfile selection, <code>luksAddKey</code> enrollment</td></tr>
+<tr><td>🔔 <strong>Notifications</strong></td><td>Root-side Android notifications via <code>cmd notification</code> (shell UID 2000) for mount, unlock, I/O, and user-view events</td></tr>
+<tr><td>🌐 <strong>WebUI</strong></td><td>Built-in single-page dashboard: device status, manual mount/unmount, LUKS unlock, key manager, config editor, log viewer, blocked-device manager</td></tr>
+<tr><td>📱 <strong>Responsive layout</strong></td><td>WebUI collapses to bottom navigation bar on narrow screens</td></tr>
+<tr><td>🔁 <strong>Nested LUKS partitions</strong></td><td>Recursive path for a LUKS mapper that exposes a full partition table; re-reads mapper partition table and processes inner block devices</td></tr>
+<tr><td>🔄 <strong>Mapper reuse</strong></td><td>Checks existing <code>/dev/mapper/*</code> entries by backing device; reuses matching state instead of tearing down a valid mount</td></tr>
+<tr><td>🛠️ <strong>Multi-root compatibility</strong></td><td>WebUI bridge normalizes KernelSU object, ReSukiSU plain-string, and APatch/MMRL alternate-field responses into a common shape</td></tr>
+</table>
+
+---
+
+## Requirements
+
+| Requirement | Notes |
+|---|---|
+| **Rooted Android** | KernelSU, APatch, Magisk, or ReSukiSU |
+| **Termux** | Runtime dependency; install from [F-Droid](https://f-droid.org/packages/com.termux/) — **not the Play Store build** |
+| `cryptsetup` | LUKS operations |
+| `bindfs` | Android-facing user view |
+| `blkid` | Filesystem/UUID detection |
+| `nsenter` | Global mount namespace access |
+| `mount` / `umount` | Standard; normally available from Android/Termux environment |
+| `inotify-tools` | **Optional but strongly recommended** — enables event-driven hotplug; falls back to 60-second polling without it |
+| `ntfs-3g` | **Optional** — userspace NTFS fallback (kernel `ntfs3`/`ntfs` preferred) |
+
+> [!WARNING]
+> Install the supported Termux distribution from **F-Droid**. The project relies on the Termux package ecosystem for its runtime tools.
+
+---
+
+## Installation
+
+### Step 1 — Install Termux dependencies
 
 ```sh
+# Always update first
 pkg update && pkg upgrade
+
+# Enable the root repository
 pkg install root-repo
+
+# Required
 pkg install cryptsetup bindfs inotify-tools
-# Optional NTFS fallback:
+
+# Optional — userspace NTFS fallback
 pkg install ntfs-3g
 ```
 
-## 📖 Usage
+The module installer (`customize.sh`) verifies `cryptsetup`, `bindfs`, `blkid`, and `nsenter` are resolvable from the Termux path and **aborts the flash** if any are missing.
 
-```sh
-mounter --status
-mounter /dev/block/sda1 MyDrive
-mounter --unmount MyDrive
-mounter --scan
-mounter --all
+### Step 2 — Flash the module
+
+<!-- INSTALL_START -->
+> [!NOTE]
+> The release-specific install commands and badges are generated by GitHub Actions. Do not remove the `INSTALL_START` / `INSTALL_END` markers: CI replaces only the content between them.
+
+> Install the Termux dependencies from [Step 1](#step-1--install-termux-dependencies) before flashing the module.
+<!-- INSTALL_END -->
+
+### Step 3 — Reboot once
+
+**A single reboot is required after installation.**
+
+`post-fs-data.sh` runs at early boot to create the Android-facing mount skeleton and set correct permissions before the storage layer is fully initialized. The main service additionally waits for `sys.user.0.ce_available=true` (credential-encrypted storage unlocked by the user's PIN/password) before beginning normal mount management.
+
+After that first reboot, hotplug is designed to work without further reboots.
+
+---
+
+## Automatic mode
+
+### Boot sequence
+
+```
+Early boot (post-fs-data.sh)
+  └─ Create /storage/emulated/0/ext skeleton
+  └─ Set ownership and permissions
+
+User unlocks device (CE storage available)
+  └─ service.sh daemon starts
+      ├─ Initial mount pass (all detected removable devices)
+      ├─ inotifywait on /dev/block (if available)
+      └─ 60-second health-check loop
 ```
 
-Automatic discovery handles `/dev/block/sd*` and `/dev/block/mmcblk1*`. Internal `mmcblk0*`, `dm-*`, and `loop*` devices are excluded deliberately.
+### Hotplug — which devices are watched
 
-## ⚙️ Configuration
+The daemon watches `/dev/block` for `CREATE` and `DELETE` events, filtered to these name patterns:
 
-Configuration is a trusted shell fragment at:
+```
+sd[a-z]*        USB / OTG device family
+mmcblk1*        SD card family
+```
 
-```text
+`mmcblk0*`, `dm-*`, and `loop*` are **never** processed automatically. See [Safety](#-safety--resilience).
+
+### Event coalescing
+
+A single USB-OTG plug event typically creates both a disk node and one or more partition nodes in quick succession. Rather than launching a separate mount process per event, the daemon allows one active run and one pending run. Additional events during an active run are collapsed into the pending slot. This prevents thundering-herd behavior from a single plug.
+
+### Two-pass scan order
+
+| Pass | Scope | Rationale |
+|---|---|---|
+| **1 — Plain** | Non-LUKS removable partitions | Fast; makes ordinary volumes immediately available |
+| **2 — LUKS** | Encrypted devices | May require keyfile lookup or interactive unlock; deliberately separated |
+
+### Fallback: no `inotifywait`
+
+Without `inotify-tools`, the service falls back to a **60-second health-check loop**. This loop remains active even when inotify is running, to catch state failures (e.g. a hung bindfs) that do not produce device-node events.
+
+> [!WARNING]
+> A background daemon cannot answer an unknown LUKS passphrase. **Automatic LUKS unlock only works when a matching keyfile already exists.** For a passphrase-only LUKS container, use the WebUI or an interactive root shell. The interactive path is explicitly implemented as a `read`-based prompt and is not suitable for unattended background operation.
+
+---
+
+## LUKS unlock — exactly how it works
+
+### Unlock source priority
+
+For each detected LUKS device, the mount engine attempts unlock sources in this order:
+
+```
+1. KEY_PATH_<UUID>          per-device configured keyfile (config variable)
+2. <KEY_DIR>/<UUID>.key     standard UUID-keyed file in the key directory
+3. other files in KEY_DIR   fallback search of the key directory
+4. interactive prompt        passphrase entry or manual keyfile selection
+```
+
+UUID characters are normalized (`-` → `_`) when used in shell variable names. The actual LUKS UUID is used verbatim as the filename component for the `<uuid>.key` convention.
+
+### Key directory
+
+```
+/storage/emulated/0/Documents/luks_keys/
+```
+
+The early-boot skeleton accesses this location via `/data/media/0/Documents/luks_keys/config` so it can operate before the normal emulated-storage path is mounted.
+
+The directory is created with mode `0700`. Individual keyfiles are created with mode `0600`.
+
+> [!CAUTION]
+> The fallback key search treats **any** regular file in the key directory as a potential key candidate. Keep this directory dedicated exclusively to LUKS key material.
+
+### Auto-enrolling a new keyfile after interactive unlock
+
+When the interactive prompt successfully unlocks a device, the CLI offers to save a keyfile. If accepted:
+
+1. 512 bytes are read from `/dev/urandom` into a new file
+2. Mode is set to `0600`
+3. `cryptsetup luksAddKey` enrolls the file in the device's keyslot
+
+This converts a one-time interactive session into future automatic unlock eligibility.
+
+### WebUI key generation is different
+
+The WebUI's **Generate key** button creates a 512-byte random file with `chmod 600`, but **does not** call `luksAddKey`. A WebUI-generated key must be enrolled manually (via `cryptsetup luksAddKey` in a shell) or referenced by its `KEY_PATH_<UUID>` config variable.
+
+---
+
+## Mount paths
+
+Every successfully mounted device occupies two paths:
+
+### Physical mount (global namespace)
+
+```
+/mnt/media_rw/<label>
+```
+
+This is the actual filesystem mount, placed in PID 1's mount namespace via `nsenter -t 1 -m`. It is not directly visible to typical Android apps.
+
+### Android user view (bindfs)
+
+```
+/storage/emulated/0/ext/<label>
+```
+
+A `bindfs` layer over the physical mount with:
+- UID/GID `1023` (`media_rw`)
+- Mode `0770`
+- setgid inheritance (new entries inherit the group)
+
+For paths under `/storage/emulated/0` or `/sdcard`, the implementation internally translates to the `/data/media/0` real path before creating or verifying the bindfs view. This avoids false verification failures caused by Android's emulated/FUSE layer sitting between the mount engine and the actual inode.
+
+> [!NOTE]
+> When `bindfs` verification fails, the engine falls back to a standard bind mount. This fallback may leave the directory root-owned rather than `media_rw`-owned, which can restrict file-manager and MediaStore access depending on the ROM's FUSE enforcement.
+
+---
+
+## Configuration
+
+### Location
+
+```
 /storage/emulated/0/Documents/luks_keys/config
 ```
 
-The default Android-visible path is `/storage/emulated/0/ext`. Per-device mappings use the LUKS UUID with hyphens replaced by underscores:
+The config file is **sourced directly by the shell-based mount engine** — it is not JSON or YAML. It is a small shell fragment.
+
+> [!CAUTION]
+> Treat the config as trusted shell code. A line in a sourced file executes with root privileges. Do not paste untrusted content into it.
+
+### Global defaults
 
 ```sh
 BASE_STORAGE_PATH="/storage/emulated/0/ext"
-MAPPING_11111111_2222_3333_4444_555555555555="MyDrive"
-STORAGE_PATH_11111111_2222_3333_4444_555555555555="/storage/emulated/0/ext/MyDrive"
-# KEY_PATH_11111111_2222_3333_4444_555555555555="/path/to/keyfile"
 ```
 
-Keyfiles are stored by default in `/storage/emulated/0/Documents/luks_keys/`. Automatic unlock requires a keyfile that is already enrolled in the LUKS device.
+Absent this variable, the engine falls back to `/storage/emulated/0/ext`.
 
-## ❓ Troubleshooting
+### Per-device entries
+
+Auto-generated by `mounter --scan`:
 
 ```sh
-su -c '/system/bin/mounter --status'
-su -c 'tail -200 /data/local/tmp/mounter.log'
+# --- OTG Device: 11111111-2222-3333-4444-555555555555 ---
+MAPPING_11111111_2222_3333_4444_555555555555="MyDrive"
+STORAGE_PATH_11111111_2222_3333_4444_555555555555="/storage/emulated/0/ext/MyDrive"
+# KEY_PATH_11111111_2222_3333_4444_555555555555=""
+```
+
+| Variable | Purpose |
+|---|---|
+| `MAPPING_<safe-uuid>` | Remembered label for this device |
+| `STORAGE_PATH_<safe-uuid>` | Override for the Android-visible path |
+| `KEY_PATH_<safe-uuid>` | Explicit keyfile path (uncomment to activate) |
+
+`<safe-uuid>` is the LUKS UUID with `-` replaced by `_`.
+
+### Populate the config without mounting
+
+```sh
+mounter --scan
+```
+
+Enumerates removable device families, resolves UUIDs, picks labels, and writes new config entries. No mount is attempted.
+
+---
+
+## CLI reference
+
+```
+/system/bin/mounter [device] [label] [options]
+```
+
+### Commands
+
+| Command | Description |
+|---|---|
+| `mounter --help` | Print the built-in usage screen |
+| `mounter --status` | Per-device: type, encryption state, physical mount, user view |
+| `mounter /dev/block/sda1 MyDrive` | Mount a specific device with optional label |
+| `mounter --unmount MyDrive` | Unmount label, close associated LUKS mapper(s) |
+| `mounter --scan` | Discover and register devices; write config entries; no mount |
+| `mounter --all` | Full cleanup pass + mount-all pass |
+| `mounter --auto-update-config` | Scan/update config, then run the automatic mount pass |
+| `mounter --install-service` | Generate an additional `/data/adb/service.d/` polling helper |
+| `mounter --link-bin` | Create a symlink at `/system/bin/mounter` or a supplied path |
+
+### Status output layout
+
+```
+Device          Type         Encryption   Mount Point           User View
+────────────────────────────────────────────────────────────────────────────
+/dev/block/sda1  OTG         Unlocked     /mnt/media_rw/MyDrive  /storage/emulated/0/ext/MyDrive
+/dev/block/sdb1  OTG         Locked       —                       —
+/dev/block/mmcblk1p1  SD     Plain        /mnt/media_rw/SDCard   /storage/emulated/0/ext/SDCard
+```
+
+Encryption states: `Plain`, `Locked`, `Unlocked`. Physical mount and bindfs user view are reported separately.
+
+---
+
+## Built-in WebUI
+
+The WebUI is a single-page application in `webroot/index.html`. It is accessed through a compatible SU manager's WebUI entry. **No separate HTTP server is required or started.**
+
+### Pages
+
+#### Dashboard
+Live overview: detected devices, mounted devices, locked LUKS devices, per-device state, physical path, Android-visible path, and per-device mount / unmount / unlock actions.
+
+#### Devices
+- Manual mount by device path and optional label
+- Manual unmount by label
+- Blocked-device list with per-device unblock and clear-all
+- Scan-and-register action
+
+#### Keys
+- List key directory contents
+- Generate a 512-byte random keyfile (file creation only; **not** auto-enrolled in LUKS)
+- Delete keyfiles
+
+#### Config
+Live shell config editor with buttons for the optional service/link helpers.
+
+#### Logs
+Tails `/data/local/tmp/mounter.log`. Shows the last 200 lines, color-codes common status levels, and can clear the log. The background service rotates the log when it grows beyond 10,000 lines.
+
+### Bridge compatibility
+
+The WebUI normalizes all SU manager bridge responses into a common internal shape:
+
+| Manager | Bridge return format |
+|---|---|
+| KernelSU | `{ stdout, stderr, errno }` |
+| ReSukiSU | Plain string |
+| APatch / MMRL | `{ out, err, code }` |
+
+To verify your bridge is functional:
+```js
+// Run in the WebView developer console
+(async () => { console.log(typeof await window.ksu.exec('id')) })()
+```
+A healthy bridge returns `string` or `object`; the module normalizes both.
+
+---
+
+## Safety & resilience
+
+### Internal-device guard
+
+The automatic and manual mount engine **rejects** device paths matching:
+
+```
+*mmcblk0*     internal eMMC / internal SD
+*dm-*         device-mapper nodes
+*loop*        loop devices
+```
+
+This is deliberate safety behavior, not a missing feature. Loop-backed container images and device-mapper nodes are outside the project's supported device model by design. Do not file issues requesting loop-image mounting support.
+
+### Ghost-device check
+
+Before any mount attempt, the engine reads `/sys/class/block/<device>/size`. A missing entry or a zero-sized report causes the device to be rejected. This is intended to avoid processing stale Android block nodes that have no physical media behind them.
+
+### Mount verification
+
+A successful `mount(8)` syscall is not considered sufficient. The engine immediately attempts a directory listing of the mounted path. An I/O failure is treated as an unstable or ghost mount:
+1. The device is unmounted
+2. A failure notification is sent
+3. A failure strike is recorded
+
+### Two-strike blocklist
+
+| Event | Result |
+|---|---|
+| First failure | Strike recorded; device remains eligible |
+| Second failure | Device blocked by node name |
+| Replug | Block automatically cleared |
+| Manual unblock | Available via WebUI or by deleting the failure record |
+
+```sh
+# Inspect current failure state
 su -c 'ls -l /data/local/tmp/mounter_failures'
 ```
 
-When reporting a problem, include your Android version, ROM, root manager, device node, filesystem type, status output, and relevant logs. Never include passphrases or key material.
+### Stale-state cleanup
 
-## 🔨 Building
+`cleanup_stale_mounts()` scans the global namespace for orphaned LUKS mappers and mount points associated with no-longer-present devices. On an unplug event, cleanup runs immediately rather than waiting for the 60-second health interval.
+
+---
+
+## Filesystem support
+
+| Filesystem | Behavior |
+|---|---|
+| **LUKS** | Detected with `cryptsetup isLuks`; unlocked to a mapper, then mounted as the inner filesystem |
+| **NTFS** | Driver priority: `ntfs3` → `ntfs` → `ntfs-3g` (checked against `/proc/filesystems`) |
+| **exFAT** | Native `exfat` when present in `/proc/filesystems`; falls back to `vfat` |
+| **VFAT / FAT32** | Standard kernel filesystem path |
+| **F2FS** | Passed through the kernel filesystem path when the device kernel supports it |
+| **ext2 / ext3 / ext4** | Detected type → generic auto-detect → kernel brute-force fallback |
+| **Other kernel filesystems** | Generic auto-detect → iterate non-`nodev` entries in `/proc/filesystems` |
+| **BTRFS** | ⛔ **Explicitly disabled.** The mount engine returns a failure for detected BTRFS. Do not rely on older documentation that listed BTRFS as supported. |
+
+> [!WARNING]
+> Filesystem support is bounded by the Android kernel and available userspace drivers on the specific device and ROM. The mounter selects a driver; it cannot create one that the kernel does not expose.
+
+---
+
+## Technical deep dive
+
+### Namespace model
+
+Nearly all mount operations are executed as:
+
+```sh
+nsenter -t 1 -m -- <mount command>
+```
+
+This targets PID 1's mount namespace, making mounts globally visible to Android's storage layer rather than confined to an isolated shell session. `nsenter` is therefore a hard runtime dependency — the module cannot function without it.
+
+### Tool resolution order
+
+The mounter bootstraps its path environment around Termux:
+
+1. `/data/data/com.termux/files/usr/bin`
+2. Termux applets
+3. Android/system fallback paths
+
+When Termux's library path and `libtermux-exec.so` are present, they are exported via `LD_PRELOAD` so that Termux binaries (`cryptsetup`, `bindfs`, GNU coreutils variants) are callable from the root module environment.
+
+### NTFS driver resolution
+
+```
+Check /proc/filesystems for ntfs3 → use ntfs3
+  else check for ntfs        → use ntfs
+  else check for ntfs-3g     → use ntfs-3g (FUSE, userspace)
+  else                        → fail with unsupported filesystem message
+```
+
+### Nested LUKS partition tables
+
+When a LUKS mapper exposes a partition table rather than a direct filesystem:
+
+1. `blockdev --rereadpt` asks the kernel to re-read the mapper's partition table
+2. Inner block devices are discovered
+3. The mount engine recurses to process each inner device independently
+
+### Mapper reuse
+
+Before creating a new `/dev/mapper/<name>`, the engine:
+
+1. Checks whether the target mount point is already in use
+2. If occupied by the same backing source → reuse existing state
+3. If occupied by a different source → tear down the conflicting mount, then proceed
+4. Searches all `/dev/mapper/*` entries by comparing their `cryptsetup status` backing device to the current source path
+
+---
+
+## Limitations & known constraints
+
+Read this before opening an issue.
+
+| # | Limitation |
+|---|---|
+| 1 | **Root is mandatory.** Block devices, device-mapper, mount namespaces, and Android storage permissions are all inaccessible to unprivileged processes. |
+| 2 | **Termux is a real dependency.** The installer verifies it and aborts without it. There is no self-contained binary bundle in the current release. |
+| 3 | **Auto-discovery is intentionally narrow.** Only `/dev/block/sd*` and `/dev/block/mmcblk1*` are scanned/watched. This is not a universal block-device manager. |
+| 4 | **Loop images are rejected by design.** `/dev/loop*` and `dm-*` are on the safety exclusion list. Loop-backed LUKS images are not a supported use case. |
+| 5 | **BTRFS is disabled.** The mount engine explicitly fails for BTRFS. No workaround exists in the current release. |
+| 6 | **Automatic LUKS unlock requires a pre-existing keyfile.** Without one, unlock falls through to interactive mode — unsuitable for unattended background operation. |
+| 7 | **ROM-dependent FUSE behavior.** `bindfs` ownership mapping works on common ROMs, but Android's FUSE/storage policies vary. The standard-bind fallback may not provide the same app-level access semantics. |
+| 8 | **`--install-service` is additive, not a replacement.** It creates an additional `/data/adb/service.d/` polling loop. The module already ships its own `service.sh` event daemon. Running both creates duplicate mount passes. |
+| 9 | **`--link-bin` may fail on read-only system partitions.** Modern devices with system-as-root layouts reject `/system` remounts. The normal module installation already provides `system/bin/mounter` via the module overlay; most users should not need this option. |
+| 10 | **Version display inconsistency in current source.** The published `v1.5.58` release metadata (`module.prop`, `update.json`) and the internal `mounter` banner (`v1.5.45`) do not match. The installer extracts its display version from the internal banner. This is a source-level metadata issue and does not affect runtime behavior, but it will cause the module manager and installer output to show `v1.5.45` instead of `v1.5.58`. |
+
+---
+
+## Troubleshooting
+
+### First stop: status and logs
+
+```sh
+# Overall device and mount state
+su -c '/system/bin/mounter --status'
+
+# Last 200 log lines
+su -c 'tail -200 /data/local/tmp/mounter.log'
+```
+
+Or open **WebUI → Logs**.
+
+---
+
+### A device is blocked and won't mount
+
+```sh
+# Check recorded failures
+su -c 'ls -l /data/local/tmp/mounter_failures'
+
+# Replug the device (automatically clears the block), or clear via WebUI
+```
+
+Two failures trigger the block. The block is keyed by device node name.
+
+---
+
+### Device mounts at `/mnt/media_rw/...` but is invisible in the file manager
+
+The physical mount and the Android user view are separate. Diagnose them separately:
+
+```sh
+# Physical mount
+su -c 'mount | grep /mnt/media_rw'
+
+# bindfs / user view
+su -c 'mount | grep -E "bindfs|/data/media/0|/storage/emulated/0/ext"'
+```
+
+Check the log for any of these strings:
+- `Path Mapping` — path translation between emulated and real paths
+- `Creating user-visible bindfs view` — bindfs setup attempt
+- `User View Failed` — bindfs failed; fallback may be active
+- `Fallback active` — standard bind mount used instead of bindfs
+
+---
+
+### LUKS device not unlocking automatically
+
+1. Confirm a keyfile exists:
+   ```sh
+   su -c 'ls -la /storage/emulated/0/Documents/luks_keys/'
+   ```
+2. Confirm the filename matches the LUKS UUID:
+   ```sh
+   su -c 'cryptsetup luksUUID /dev/block/sda1'
+   # expected key: /storage/emulated/0/Documents/luks_keys/<uuid>.key
+   ```
+3. Confirm the key is actually enrolled in the LUKS device:
+   ```sh
+   su -c 'cryptsetup luksDump /dev/block/sda1 | grep -A2 "Key Slot"'
+   ```
+4. Try manual unlock from WebUI → Dashboard → Unlock to verify the key works interactively.
+
+---
+
+### Missing dependency errors
+
+```sh
+su -c 'command -v cryptsetup; command -v bindfs; command -v blkid; command -v nsenter; command -v mount; command -v umount'
+```
+
+The mounter prefers Termux binaries before system fallbacks. Ensure Termux packages are installed and that `root-repo` is enabled.
+
+---
+
+### WebUI is blank or returns no output
+
+1. Verify the module is loaded by your manager (not just installed)
+2. Open the WebUI exclusively through the manager's WebUI entry — `window.ksu` must be injected
+3. Run the bridge check in the WebView console:
+   ```js
+   (async () => { console.log(typeof await window.ksu.exec('id')) })()
+   ```
+4. Expected output: `string` or `object`. Anything else indicates a bridge injection problem in your manager.
+
+---
+
+## Building from source
 
 ```sh
 git clone https://github.com/rexackermann/android-luks-mounter.git
@@ -128,12 +646,91 @@ cd android-luks-mounter
 bash build.sh
 ```
 
-## ⚖️ License
+`build.sh` reads the version from `module.prop`, packages `system/`, `webroot/`, module scripts, `LICENSE`, and `README.md`, and produces:
 
-Released under the [MIT License](LICENSE).
+```
+android-luks-mounter-<version>.zip
+```
+
+Requires: `zip` in `$PATH`.
+
+### Repository layout
+
+```
+.
+├── system/
+│   └── bin/
+│       └── mounter           # Core scanner · unlock · mount · bindfs · status · failure logic
+├── webroot/
+│   └── index.html            # Complete single-page WebUI
+├── customize.sh              # Flash-time dependency verification and permission setup
+├── post-fs-data.sh           # Early-boot Android storage skeleton
+├── service.sh                # Event-driven inotify daemon + 60s health poll
+├── action.sh                 # Manager "Action" button entry point
+├── module.prop               # Module metadata (id, version, author, description)
+├── update.json               # Manager update-check metadata
+├── build.sh                  # Local release packaging
+├── changelog.md              # Full release history
+└── LICENSE                   # MIT
+```
+
+---
+
+## Security notes
+
+Android LUKS Mounter is a root-level storage administration tool. **It does not provide encryption** — LUKS provides the encryption. This project automates opening, mounting, and managing encrypted containers.
+
+**Key material handling:**
+- Keyfiles that allow automatic unlock are sensitive secrets. A rooted and unlocked Android device can access keyfiles stored on internal storage.
+- The key directory is created `0700`; keyfiles are created `0600`. These permissions are correct but do not protect against another root process or physical acquisition.
+- Do not store keyfiles in locations accessible to the broader Android app sandbox (e.g. `/sdcard/` roots without proper permission restriction).
+- Keyfiles backed up to cloud storage effectively move your LUKS access control to wherever your cloud backup is secured.
+
+**Config file:**
+- The config at `/storage/emulated/0/Documents/luks_keys/config` is sourced as shell code with root privileges. Treat it accordingly.
+
+---
+
+## Contributing
+
+Issues and pull requests are welcome.
+
+**When reporting a mount problem, include:**
+- Android version and ROM name
+- Root manager and version
+- Device node (`/dev/block/...`)
+- Filesystem type (output of `blkid`)
+- Relevant config mapping (redact UUIDs if preferred)
+- `su -c 'mounter --status'` output
+- The surrounding log section from `/data/local/tmp/mounter.log`
+
+**Never include your LUKS passphrase, raw keyfile contents, or any key material in an issue.**
+
+**Most useful areas for code contributions:**
+- Mount/namespace path logic (`system/bin/mounter`)
+- Removable-device discovery patterns (`service.sh`)
+- Failure state machine and blocklist
+- Filesystem detection and driver selection
+- WebUI bridge compatibility (`webroot/index.html`)
+- BTRFS re-enablement (requires careful testing)
+- Version metadata consistency fix (`module.prop` banner ↔ `mounter` internal header)
+
+---
+
+## License
+
+Released under the **[MIT License](LICENSE)**.
+
+---
 
 <div align="center">
 
-Created and maintained by [Rex Ackermann](https://github.com/rexackermann)
+<sub>Created by <a href="https://github.com/rexackermann">Rex Ackermann</a> and Maintained by <a href="https://github.com/rexackermann">Rex Ackermann</a> and <a href="https://github.com/mariayuno">Maria Yuno</a></sub>
+
+<br>
+
+<!-- Dynamic: auto-reflects latest release tag -->
+[![GitHub Release](https://img.shields.io/github/v/release/rexackermann/android-luks-mounter?style=flat-square&label=latest&color=7c3aed)](https://github.com/rexackermann/android-luks-mounter/releases/latest)
+[![Stars](https://img.shields.io/github/stars/rexackermann/android-luks-mounter?style=flat-square&color=f59e0b)](https://github.com/rexackermann/android-luks-mounter/stargazers)
 
 </div>
