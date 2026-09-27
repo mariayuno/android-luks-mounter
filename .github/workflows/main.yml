@@ -69,8 +69,12 @@ jobs:
             local fname
             fname=$(awk "/^Package: ${pkg}\$/{f=1} f&&/^Filename:/{print \$2;exit}" "$TMP/Packages")
             [ -z "$fname" ] && { echo "  ⚠ $pkg not in index — skipping"; return 1; }
-            curl -sfL "$REPO/$fname" -o "$OUTDIR/$(basename "$fname")"
-            echo "  ✓ $pkg → $(basename "$fname")"
+            # Sanitize filename: colons (Debian epoch e.g. "1:2.5.0") are invalid on NTFS
+            # and rejected by actions/upload-artifact. Replace with underscore.
+            local safe_name
+            safe_name=$(basename "$fname" | tr ':' '_')
+            curl -sfL "$REPO/$fname" -o "$OUTDIR/$safe_name"
+            echo "  ✓ $pkg → $safe_name"
           }
 
           echo "→ resolving transitive deps"
