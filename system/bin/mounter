@@ -52,13 +52,18 @@ FAILURE_TRACKING_DIR="/data/local/tmp/mounter_failures"
 if [ -d "$MOUNTER_BIN_DIR" ]; then
     export PATH="$MOUNTER_BIN_DIR:$PATH"
     export LD_LIBRARY_PATH="$MOUNTER_LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-    if [ -f "$MOUNTER_LIB_DIR/libtermux-exec.so" ]; then
-        export LD_PRELOAD="$MOUNTER_LIB_DIR/libtermux-exec.so"
-    fi
 fi
 
-# If .no_termux flag is set (written by bootstrap when Termux is absent, or by
-# the user to explicitly opt out), skip all Termux path injection entirely.
+# Resolve libtermux-exec.so — needed by dynamically-linked Termux binaries
+# regardless of whether we use Termux for tools or not. Try our lib dir first,
+# fall back to Termux's own copy.
+_TERMUX_EXEC_SO=""
+for _so in "$MOUNTER_LIB_DIR/libtermux-exec.so" "$TERMUX_PREFIX/lib/libtermux-exec.so"; do
+    [ -f "$_so" ] && _TERMUX_EXEC_SO="$_so" && break
+done
+[ -n "$_TERMUX_EXEC_SO" ] && export LD_PRELOAD="$_TERMUX_EXEC_SO"
+
+# If .no_termux flag is set, skip Termux path injection — use only our bins + system.
 NO_TERMUX_FLAG="/data/adb/mounter/.no_termux"
 if [ -f "$NO_TERMUX_FLAG" ]; then
     export PATH="$MOUNTER_BIN_DIR:$SYSTEM_PATHS"

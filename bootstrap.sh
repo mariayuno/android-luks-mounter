@@ -19,7 +19,7 @@ LOG="/data/local/tmp/mounter.log"
 NO_TERMUX_FLAG="/data/adb/mounter/.no_termux"
 
 # Packages to fetch. ntfs-3g is optional — failure is warned, not fatal.
-REQUIRED_PKGS="cryptsetup bindfs inotify-tools"
+REQUIRED_PKGS="termux-exec cryptsetup bindfs inotify-tools"
 OPTIONAL_PKGS="ntfs-3g"
 
 # --- Arg parsing ---
