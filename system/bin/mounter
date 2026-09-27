@@ -40,24 +40,11 @@ NC=$(printf '\033[0m') # No Color (Reset)
 # Libraries, specific binaries, and paths are often missing or point to Toybox applets.
 # This section aligns the runtime environment with Termux's internal standards.
 
-MOUNTER_BIN_DIR="/data/adb/mounter/bin"
-MOUNTER_LIB_DIR="/data/adb/mounter/lib"
 TERMUX_PREFIX="/data/data/com.termux/files/usr"
 TERMUX_HOME="/data/data/com.termux/files/home"
 TERMUX_TMPDIR="$TERMUX_PREFIX/tmp"
 SYSTEM_PATHS="/sbin:/system/sbin:/system/bin:/system/xbin:/data/local/bin"
 FAILURE_TRACKING_DIR="/data/local/tmp/mounter_failures"
-
-# Self-contained bins take priority over everything — set PATH/LD first.
-if [ -d "$MOUNTER_BIN_DIR" ]; then
-    export PATH="$MOUNTER_BIN_DIR:$PATH"
-    export LD_LIBRARY_PATH="$MOUNTER_LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-    # Downloaded Termux .deb binaries are dynamically linked — they still need
-    # libtermux-exec.so for shebang/exec fixup. Use our own copy if present.
-    if [ -f "$MOUNTER_LIB_DIR/libtermux-exec.so" ]; then
-        export LD_PRELOAD="$MOUNTER_LIB_DIR/libtermux-exec.so"
-    fi
-fi
 
 if [ -d "$TERMUX_PREFIX" ]; then
     # 🔍 Deterministic User Discovery:
@@ -108,17 +95,14 @@ export LD_LIBRARY_PATH
 find_tool() {
     local tool=$1
     local path
-
-    # 1. Primary: Self-contained binaries (bootstrapped from Termux repo, no Termux required)
-    if [ -x "$MOUNTER_BIN_DIR/$tool" ]; then
-        path="$MOUNTER_BIN_DIR/$tool"
-    # 2. Secondary: Termux Binaries
-    elif [ -x "$TERMUX_PREFIX/bin/$tool" ]; then
+    
+    # 1. Primary: Termux Binaries (Preferred)
+    if [ -x "$TERMUX_PREFIX/bin/$tool" ]; then
         path="$TERMUX_PREFIX/bin/$tool"
-    # 3. Tertiary: Termux Applets (Busybox symlinks)
+    # 2. Secondary: Termux Applets (Busybox symlinks)
     elif [ -x "$TERMUX_PREFIX/bin/applets/$tool" ]; then
         path="$TERMUX_PREFIX/bin/applets/$tool"
-    # 4. Quaternary: System Fallback (Toybox/System toolbox)
+    # 3. Tertiary: System Fallback (Toybox/System toolbox)
     else
         path=$(command -v "$tool" 2>/dev/null)
         # Ensure it's an absolute path for safety

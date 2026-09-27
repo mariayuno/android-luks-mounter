@@ -27,90 +27,56 @@ ui_print "#                                              #"
 ui_print "################################################"
 ui_print " "
 
-# --- 🔍 Dependency Bootstrap ---
-ui_print "[*] Checking architecture..."
+# --- 🔍 Dependency Check ---
+ui_print "[*] Verifying critical dependencies..."
 
+# Path Discovery:
+# We need to explicitly check Termux paths because the installer
+# runs in a restricted storage context.
 TERMUX_PREFIX="/data/data/com.termux/files/usr"
+# Export PATH to include standard Android binaries AND Termux binaries.
 export PATH="$PATH:$TERMUX_PREFIX/bin:/sbin:/system/sbin:/system/bin:/system/xbin:/data/local/bin"
+# Export LD_LIBRARY_PATH so binaries can find their .so files.
 export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$TERMUX_PREFIX/lib"
 
-DEVICE_ARCH=$(uname -m 2>/dev/null)
-BOOTSTRAP_OK=0
+MISSING_DEPS=""
 
-case "$DEVICE_ARCH" in
-    aarch64|arm64)
-        ui_print "[*] arm64 detected — attempting self-contained bootstrap..."
-        # Prefer bundled offline debs (offline ZIP), fall back to network
-        OFFLINE_DEBS="$MODPATH/offline_debs/aarch64"
-        if [ -d "$OFFLINE_DEBS" ] && [ "$(ls "$OFFLINE_DEBS"/*.deb 2>/dev/null | wc -l)" -gt 0 ]; then
-            ui_print "[*] Offline debs found — installing without network..."
-            if sh "$MODPATH/bootstrap.sh" --offline "$OFFLINE_DEBS"; then
-                BOOTSTRAP_OK=1
-                ui_print "✅ Offline bootstrap complete — Termux not required."
-            else
-                ui_print "⚠️  Offline bootstrap failed. Trying network..."
-            fi
-        fi
-        if [ "$BOOTSTRAP_OK" -eq 0 ]; then
-            if sh "$MODPATH/bootstrap.sh"; then
-                BOOTSTRAP_OK=1
-                ui_print "✅ Bootstrap complete — Termux not required."
-            else
-                ui_print "⚠️  Bootstrap failed (no network?). Checking Termux fallback..."
-            fi
-        fi
-        ;;
-    armv7*|armv8l|arm)
-        ui_print "[*] arm (32-bit) detected — attempting self-contained bootstrap..."
-        OFFLINE_DEBS="$MODPATH/offline_debs/arm"
-        if [ -d "$OFFLINE_DEBS" ] && [ "$(ls "$OFFLINE_DEBS"/*.deb 2>/dev/null | wc -l)" -gt 0 ]; then
-            ui_print "[*] Offline debs found — installing without network..."
-            if sh "$MODPATH/bootstrap.sh" --offline "$OFFLINE_DEBS"; then
-                BOOTSTRAP_OK=1
-                ui_print "✅ Offline bootstrap complete — Termux not required."
-            else
-                ui_print "⚠️  Offline bootstrap failed. Trying network..."
-            fi
-        fi
-        if [ "$BOOTSTRAP_OK" -eq 0 ]; then
-            if sh "$MODPATH/bootstrap.sh"; then
-                BOOTSTRAP_OK=1
-                ui_print "✅ Bootstrap complete — Termux not required."
-            else
-                ui_print "⚠️  Bootstrap failed. Checking Termux fallback..."
-            fi
-        fi
-        ;;
-    *)
-        ui_print "⚠️  Unsupported arch ($DEVICE_ARCH) — bootstrap not supported."
-        ui_print "⚠️  Falling back to Termux. See README for details."
-        ;;
-esac
-
-if [ "$BOOTSTRAP_OK" -eq 0 ]; then
-    # Fallback: require Termux with the required packages installed
-    MISSING_DEPS=""
-    check_dep() {
-        command -v "$1" >/dev/null 2>&1 || MISSING_DEPS="$MISSING_DEPS $1"
-    }
-    check_dep cryptsetup
-    check_dep bindfs
-    check_dep blkid
-    check_dep nsenter
-
-    if [ -n "$MISSING_DEPS" ]; then
-        ui_print " "
-        ui_print "🚨 CRITICAL: Missing dependencies and bootstrap unavailable!"
-        ui_print "------------------------------------------------"
-        ui_print "Install dependencies in Termux:"
-        ui_print "  pkg install root-repo"
-        ui_print "  pkg install cryptsetup bindfs util-linux mount-utils blk-utils"
-        ui_print "------------------------------------------------"
-        ui_print " "
-        abort "❌ Installation failed: missing$MISSING_DEPS"
+# Function: check_dep
+# Usage: check_dep <binary_name>
+# Checks if a binary exists in the current PATH.
+check_dep() {
+    # command -v is a POSIX compliant way to check for executables.
+    if ! command -v "$1" >/dev/null 2>&1; then
+        MISSING_DEPS="$MISSING_DEPS $1" # Append missing tool to list
+        return 1
     fi
-    ui_print "✅ Termux dependencies found."
+    return 0
+}
+
+# Verify essential tools required for functionality.
+check_dep cryptsetup || ui_print "  [!] Warning: cryptsetup missing!"
+check_dep bindfs || ui_print "  [!] Warning: bindfs missing!"
+check_dep blkid || ui_print "  [!] Warning: blkid missing!"
+check_dep nsenter || ui_print "  [!] Warning: nsenter missing!"
+
+# If any dependencies are missing, abort installation to prevent broken state.
+if [ -n "$MISSING_DEPS" ]; then
+    ui_print " "
+    ui_print "🚨 CRITICAL: Missing required tools!"
+    ui_print "------------------------------------------------"
+    ui_print "To use this module, you MUST install dependencies"
+    ui_print "inside Termux first:"
+    ui_print " "
+    ui_print "  1. Open Termux"
+    ui_print "  2. Run: pkg update && pkg upgrade && pkg install root-repo"
+    ui_print "  3. Run: pkg install cryptsetup bindfs util-linux mount-utils blk-utils"
+    ui_print "------------------------------------------------"
+    ui_print " "
+    # 'abort' is a Magisk function that stops the flash process.
+    abort "❌ Installation failed due to missing dependencies."
 fi
+
+ui_print "✅ All dependencies found! ✨"
 ui_print "[*] Extracting module files..."
 
 # 🏷️ Version Reporting
@@ -135,7 +101,6 @@ set_permissions() {
   set_perm $MODPATH/service.sh 0 0 0755
   set_perm $MODPATH/post-fs-data.sh 0 0 0755
   set_perm $MODPATH/action.sh 0 0 0755
-  set_perm $MODPATH/bootstrap.sh 0 0 0755
   set_perm $MODPATH/customize.sh 0 0 0755
   set_perm_recursive $MODPATH/webroot 0 0 0755 0644
 }
