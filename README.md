@@ -56,19 +56,25 @@ The WebUI bridge layer is compatible with all major KernelSU-based managers:
 ---
 
 ## 🛠️ Prerequisites & Requirements
-> [!IMPORTANT]
-> **Dependencies are mandatory for ALL installation methods!** Even if you use the flashable module, you must install the core tools in Termux.
 
 1. **🔑 Root Access**: Required for low-level block device operations (KernelSU, APatch, ReSukiSU, or Magisk).
-2. **📟 Termux Environment**: The engine that provides necessary libraries.
-3. **📦 Terminal Dependencies**:
-   Open Termux and run:
-   ```bash
-   pkg update && pkg upgrade
-   pkg install root-repo
-   pkg install cryptsetup bindfs util-linux mount-utils blk-utils
-   pkg install inotify-tools   # recommended: enables instant plug/unplug detection
-   ```
+
+2. **📦 Dependencies** — how they are sourced depends on your device architecture:
+
+   | Architecture | How dependencies are installed |
+   |---|---|
+   | **arm64 (aarch64)** | Downloaded automatically from the Termux package repo at flash time. **Termux does not need to be installed.** |
+   | **arm (32-bit)** | Must be installed manually in Termux (see below). Bootstrap is arm64-only. |
+
+   > [!WARNING]
+   > **32-bit (armv7) devices are not supported by the self-contained bootstrap.** On these devices, Termux remains required. Install dependencies manually in Termux:
+   > ```bash
+   > pkg install root-repo
+   > pkg install cryptsetup bindfs util-linux mount-utils blk-utils inotify-tools
+   > ```
+
+   > [!NOTE]
+   > On arm64, if the device has no network at flash time, the installer will fall back to checking for Termux and abort with instructions if neither source is available.
 
 ---
 
@@ -85,7 +91,7 @@ The WebUI bridge layer is compatible with all major KernelSU-based managers:
 
 ### 📁 Automatic Mode (Plug & Play)
 Once installed and rebooted, simply plug in your drive. The background service will:
-1. Detect the drive instantly via inotify on `/dev/block` (requires `pkg install inotify-tools`), or within 60 s via the health-check poll if not installed.
+1. Detect the drive instantly via inotify on `/dev/block` (bootstrapped automatically on arm64; on 32-bit install `inotify-tools` in Termux), or within 60 s via the health-check poll if unavailable.
 2. Auto-unlock it if a key exists in `/data/adb/mounter/`.
 3. Mount it to your configured path (default: `/sdcard/ext/label`).
 4. Clean up bindfs views and LUKS mappers automatically on unplug.
