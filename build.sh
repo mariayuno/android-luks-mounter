@@ -19,11 +19,15 @@ zip -r9 "$OUTPUT_ZIP" module.prop customize.sh post-fs-data.sh service.sh action
 
 # 3. Success
 if [ -f "$OUTPUT_ZIP" ]; then
+    # Also write a stable-named copy so /releases/latest/download/android-luks-mounter.zip
+    # always resolves without knowing the version in advance.
+    cp "$OUTPUT_ZIP" android-luks-mounter.zip
     echo " "
     echo "################################################"
     echo "#                                              #"
     echo "#   ✅ BUILD SUCCESSFUL!                       #"
     echo "#   📁 Output: $OUTPUT_ZIP                #"
+    echo "#   📁 Stable: android-luks-mounter.zip    #"
     echo "#                                              #"
     echo "################################################"
 else
