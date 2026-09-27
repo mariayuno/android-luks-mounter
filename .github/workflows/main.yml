@@ -5,14 +5,73 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    # Weekly rebuild every Monday 02:00 UTC — picks up latest Termux package versions
+    - cron: '0 2 * * 1'
 
 permissions:
   contents: write
 
 jobs:
+  # ── Download latest .deb files from Termux repo for both arches ────────────
+  fetch-debs:
+    name: Fetch Termux debs
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [aarch64, arm]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fetch debs for ${{ matrix.arch }}
+        run: |
+          set -e
+          ARCH="${{ matrix.arch }}"
+          REPO="https://packages.termux.dev/apt/termux-main"
+          OUTDIR="offline_debs/${ARCH}"
+          mkdir -p "$OUTDIR"
+
+          # Fetch and decompress Packages index
+          curl -fsSL "${REPO}/dists/stable/main/binary-${ARCH}/Packages" -o Packages || \
+            { curl -fsSL "${REPO}/dists/stable/main/binary-${ARCH}/Packages.xz" -o Packages.xz && xz -d Packages.xz; }
+
+          # Resolve and download each package
+          resolve_deb() {
+            local pkg="$1"
+            awk -v pkg="$pkg" '
+              /^$/ { if (m && f) { print f; exit } m=0; f="" }
+              /^Package: / { m=($2==pkg) }
+              /^Filename: / { f=$2 }
+              END { if (m && f) print f }
+            ' Packages
+          }
+
+          for pkg in cryptsetup bindfs inotify-tools ntfs-3g; do
+            rel=$(resolve_deb "$pkg")
+            if [ -z "$rel" ]; then
+              echo "⚠️  $pkg not found in index for $ARCH — skipping"
+              continue
+            fi
+            echo "📥 $pkg → $rel"
+            curl -fsSL "${REPO}/${rel}" -o "${OUTDIR}/$(basename "$rel")"
+          done
+
+          echo "📦 Downloaded for $ARCH:"
+          ls -lh "$OUTDIR"
+
+      - name: Upload deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: debs-${{ matrix.arch }}
+          path: offline_debs/${{ matrix.arch }}/
+          retention-days: 7
+
+  # ── Build both ZIPs ─────────────────────────────────────────────────────────
   build:
     name: Build & Release
     runs-on: ubuntu-latest
+    needs: fetch-debs
 
     steps:
       - name: Checkout
@@ -20,7 +79,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      # ── Auto-bump version on every commit ─────────────────────────────────
+      # ── Version bump ────────────────────────────────────────────────────────
       - name: Compute & bump version
         id: ver
         run: |
@@ -33,10 +92,12 @@ jobs:
           VERSION="v${MAJOR}.${MINOR}.${PATCH}"
           CODE="${MAJOR}${MINOR}${PATCH}"
           ZIP="android-luks-mounter-${VERSION}.zip"
+          ZIP_OFFLINE="android-luks-mounter-${VERSION}-offline.zip"
 
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "code=$CODE"       >> "$GITHUB_OUTPUT"
-          echo "zip=$ZIP"         >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION"      >> "$GITHUB_OUTPUT"
+          echo "code=$CODE"            >> "$GITHUB_OUTPUT"
+          echo "zip=$ZIP"              >> "$GITHUB_OUTPUT"
+          echo "zip_offline=$ZIP_OFFLINE" >> "$GITHUB_OUTPUT"
           echo "Bumped: $CURRENT → $VERSION ($CODE)"
 
       - name: Write version to module.prop and update.json
@@ -57,28 +118,58 @@ jobs:
           }
           ENDJSON
 
-      # ── Build ZIP ──────────────────────────────────────────────────────────
-      - name: Build flashable ZIP
-        id: build
+      # ── Download debs from fetch-debs job ───────────────────────────────────
+      - name: Download aarch64 debs
+        uses: actions/download-artifact@v4
+        with:
+          name: debs-aarch64
+          path: offline_debs/aarch64/
+
+      - name: Download arm debs
+        uses: actions/download-artifact@v4
+        with:
+          name: debs-arm
+          path: offline_debs/arm/
+
+      # ── Online ZIP (no bundled debs — downloads at flash time) ──────────────
+      - name: Build online ZIP
         run: |
           ZIP="${{ steps.ver.outputs.zip }}"
           zip -r9 "$ZIP" \
             module.prop customize.sh post-fs-data.sh service.sh action.sh \
-            system/ webroot/ LICENSE README.md \
+            bootstrap.sh system/ webroot/ LICENSE README.md \
             -x ".*" -x "__MACOSX" -x "*.git*"
-          echo "Built: $(ls -lh $ZIP | awk '{print $5, $9}')"
+          echo "Online ZIP: $(ls -lh "$ZIP" | awk '{print $5, $9}')"
 
-      # ── Upload artifact (PRs + main) ───────────────────────────────────────
-      - name: Upload artifact
+      # ── Offline ZIP (debs bundled for all arches — no network needed) ────────
+      - name: Build offline ZIP
+        run: |
+          ZIP_OFFLINE="${{ steps.ver.outputs.zip_offline }}"
+          zip -r9 "$ZIP_OFFLINE" \
+            module.prop customize.sh post-fs-data.sh service.sh action.sh \
+            bootstrap.sh system/ webroot/ LICENSE README.md \
+            offline_debs/ \
+            -x ".*" -x "__MACOSX" -x "*.git*"
+          echo "Offline ZIP: $(ls -lh "$ZIP_OFFLINE" | awk '{print $5, $9}')"
+
+      # ── Upload artifacts (PRs + main) ────────────────────────────────────────
+      - name: Upload online ZIP artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.ver.outputs.zip }}
           path: ${{ steps.ver.outputs.zip }}
           retention-days: 30
 
-      # ── Commit version bump & create release (main only, not PRs) ─────────
+      - name: Upload offline ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.ver.outputs.zip_offline }}
+          path: ${{ steps.ver.outputs.zip_offline }}
+          retention-days: 30
+
+      # ── Commit version bump + release (main only, not PRs) ──────────────────
       - name: Commit version bump
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -87,7 +178,7 @@ jobs:
           git push origin main
 
       - name: Create GitHub Release
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.version }}
@@ -95,15 +186,27 @@ jobs:
           body: |
             ## Android LUKS Mounter ${{ steps.ver.outputs.version }}
 
-            Auto-built from commit ${{ github.sha }} by @${{ github.actor }}
+            Auto-built from commit ${{ github.sha }}
+
+            ### Two flavours
+
+            | ZIP | Size | When to use |
+            |-----|------|-------------|
+            | `${{ steps.ver.outputs.zip }}` | small | Device has internet at flash time |
+            | `${{ steps.ver.outputs.zip_offline }}` | larger | No internet at flash, or airgapped |
+
+            Both support **arm64 and arm (32-bit)**. Termux is **not required**.
 
             ### Install
-            Flash `${{ steps.ver.outputs.zip }}` in KernelSU, APatch, or Magisk then reboot.
+            Flash the ZIP in KernelSU, APatch, or Magisk then reboot.
 
-            ### Includes
-            - `mounter` binary
-            - KernelSU/APatch WebUI
-            - Auto-mount boot service
-          files: ${{ steps.ver.outputs.zip }}
+            ### Ignore Termux entirely (optional)
+            If Termux is installed but you want the module to never touch it:
+            ```sh
+            touch /data/adb/mounter/.no_termux
+            ```
+          files: |
+            ${{ steps.ver.outputs.zip }}
+            ${{ steps.ver.outputs.zip_offline }}
           draft: false
           prerelease: false
