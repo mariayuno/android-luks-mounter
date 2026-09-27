@@ -15,7 +15,7 @@ The **online ZIP** downloads dependencies at flash time (needs network).
 <summary><b>KernelSU</b></summary>
 
 ```sh
-curl -Lo /tmp/mounter.zip https://github.com/mariayuno/android-luks-mounter/releases/latest/download/android-luks-mounter-v1.5.61.zip && /data/adb/ksud module install /tmp/mounter.zip
+curl -Lo /tmp/mounter.zip https://github.com/rexackermann/android-luks-mounter/releases/latest/download/android-luks-mounter-v1.5.62.zip && /data/adb/ksud module install /tmp/mounter.zip
 ```
 </details>
 
@@ -23,7 +23,7 @@ curl -Lo /tmp/mounter.zip https://github.com/mariayuno/android-luks-mounter/rele
 <summary><b>APatch</b></summary>
 
 ```sh
-curl -Lo /tmp/mounter.zip https://github.com/mariayuno/android-luks-mounter/releases/latest/download/android-luks-mounter-v1.5.61.zip && apd module install /tmp/mounter.zip
+curl -Lo /tmp/mounter.zip https://github.com/rexackermann/android-luks-mounter/releases/latest/download/android-luks-mounter-v1.5.62.zip && apd module install /tmp/mounter.zip
 ```
 </details>
 
@@ -31,15 +31,15 @@ curl -Lo /tmp/mounter.zip https://github.com/mariayuno/android-luks-mounter/rele
 <summary><b>Magisk</b></summary>
 
 ```sh
-curl -Lo /tmp/mounter.zip https://github.com/mariayuno/android-luks-mounter/releases/latest/download/android-luks-mounter-v1.5.61.zip && magisk --install-module /tmp/mounter.zip
+curl -Lo /tmp/mounter.zip https://github.com/rexackermann/android-luks-mounter/releases/latest/download/android-luks-mounter-v1.5.62.zip && magisk --install-module /tmp/mounter.zip
 ```
 </details>
 
 </td><td valign="top" align="right" width="35%">
 
 <p align="right">
-<img src="https://img.shields.io/badge/version-v1.5.61-7c3aed?style=for-the-badge&logo=github&logoColor=white"><br>
-<img src="https://img.shields.io/badge/versionCode-1561-2563eb?style=for-the-badge"><br>
+<img src="https://img.shields.io/badge/version-v1.5.62-7c3aed?style=for-the-badge&logo=github&logoColor=white"><br>
+<img src="https://img.shields.io/badge/versionCode-1562-2563eb?style=for-the-badge"><br>
 <img src="https://img.shields.io/badge/arm64%20%2B%20arm-supported-0891b2?style=for-the-badge"><br>
 <img src="https://img.shields.io/badge/Termux-required-ef4444?style=for-the-badge">
 </p>
