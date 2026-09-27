@@ -179,7 +179,7 @@ jobs:
               print "</details>"
               print ""
               print "<details>"
-              print "<summary><b>ReSukiSU</b></summary>"
+              print "<summary><b>Or just:</b></summary>"
               print ""
               print "Flash the same release ZIP through your module manager UI."
               print ""
