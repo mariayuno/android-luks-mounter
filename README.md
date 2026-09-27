@@ -9,26 +9,39 @@ Authored with ❤️ by **Rex Ackermann**.
 
 ### Install (root shell one-liner)
 
-**KernelSU / APatch**
+The **online ZIP** downloads dependencies at flash time (needs network).
+
+<details open>
+<summary><b>KernelSU</b></summary>
+
 ```sh
-curl -Lo /tmp/mounter.zip https://github.com/rexackermann/android-luks-mounter/releases/download/v1.5.56/android-luks-mounter-v1.5.56.zip && /data/adb/ksud module install /tmp/mounter.zip
+curl -Lo /tmp/mounter.zip https://github.com/mariayuno/android-luks-mounter/releases/latest/download/android-luks-mounter-v1.5.57.zip && /data/adb/ksud module install /tmp/mounter.zip
 ```
-**Magisk**
+</details>
+
+<details>
+<summary><b>APatch</b></summary>
+
 ```sh
-curl -Lo /tmp/mounter.zip https://github.com/rexackermann/android-luks-mounter/releases/download/v1.5.56/android-luks-mounter-v1.5.56.zip && magisk --install-module /tmp/mounter.zip
+curl -Lo /tmp/mounter.zip https://github.com/mariayuno/android-luks-mounter/releases/latest/download/android-luks-mounter-v1.5.57.zip && apd module install /tmp/mounter.zip
 ```
-**Offline (no network at flash time)**
+</details>
+
+<details>
+<summary><b>Magisk</b></summary>
+
 ```sh
-curl -Lo /tmp/mounter-offline.zip https://github.com/rexackermann/android-luks-mounter/releases/download/v1.5.56/android-luks-mounter-v1.5.56-offline.zip && /data/adb/ksud module install /tmp/mounter-offline.zip
+curl -Lo /tmp/mounter.zip https://github.com/mariayuno/android-luks-mounter/releases/latest/download/android-luks-mounter-v1.5.57.zip && magisk --install-module /tmp/mounter.zip
 ```
+</details>
 
 </td><td valign="top" align="right" width="35%">
 
 <p align="right">
-<img src="https://img.shields.io/badge/version-v1.5.56-7c3aed?style=for-the-badge&logo=github&logoColor=white"><br>
-<img src="https://img.shields.io/badge/versionCode-1556-2563eb?style=for-the-badge"><br>
+<img src="https://img.shields.io/badge/version-v1.5.57-7c3aed?style=for-the-badge&logo=github&logoColor=white"><br>
+<img src="https://img.shields.io/badge/versionCode-1557-2563eb?style=for-the-badge"><br>
 <img src="https://img.shields.io/badge/arm64%20%2B%20arm-supported-0891b2?style=for-the-badge"><br>
-<img src="https://img.shields.io/badge/Termux-not%20required-22c55e?style=for-the-badge">
+<img src="https://img.shields.io/badge/Termux-required-ef4444?style=for-the-badge">
 </p>
 
 </td></tr></table>
@@ -90,19 +103,13 @@ The WebUI bridge layer is compatible with all major KernelSU-based managers:
 
 1. **🔑 Root Access**: KernelSU, APatch, ReSukiSU, or Magisk.
 
-2. **📦 Dependencies** — handled automatically. Termux is **not required**.
-
-   | Architecture | Online ZIP | Offline ZIP |
-   |---|---|---|
-   | **arm64 (aarch64)** | Downloads deps at flash time | Bundled — no network needed |
-   | **arm (32-bit)** | Downloads deps at flash time | Bundled — no network needed |
-
-   > [!NOTE]
-   > If bootstrap fails (no network and not using the offline ZIP), the installer falls back to Termux if installed, then aborts with instructions.
-
-   **To ignore Termux entirely** even if installed:
+2. **📦 Dependencies** — install via Termux:
    ```sh
-   touch /data/adb/mounter/.no_termux
+   pkg install cryptsetup bindfs inotify-tools
+   ```
+   `ntfs-3g` is optional (NTFS write support):
+   ```sh
+   pkg install ntfs-3g
    ```
 ---
 
@@ -119,7 +126,7 @@ The WebUI bridge layer is compatible with all major KernelSU-based managers:
 
 ### 📁 Automatic Mode (Plug & Play)
 Once installed and rebooted, simply plug in your drive. The background service will:
-1. Detect the drive instantly via inotify on `/dev/block` (bootstrapped automatically on arm64; on 32-bit install `inotify-tools` in Termux), or within 60 s via the health-check poll if unavailable.
+1. Detect the drive instantly via inotify on `/dev/block` (requires `inotify-tools` installed in Termux), or within 60 s via the health-check poll if unavailable.
 2. Auto-unlock it if a key exists in `/data/adb/mounter/`.
 3. Mount it to your configured path (default: `/sdcard/ext/label`).
 4. Clean up bindfs views and LUKS mappers automatically on unplug.
