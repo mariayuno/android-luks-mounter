@@ -444,7 +444,7 @@
   <header class="topbar">
     <div class="topbar-title">🔐 <span>LUKS</span> Mounter</div>
     <div class="topbar-right">
-      <span class="version-badge" id="ver">v1.5.37-GOLD</span>
+      <span class="version-badge" id="ver">…</span>
       <button class="btn btn-ghost btn-sm" onclick="refreshAll()">↻ Refresh</button>
     </div>
   </header>
@@ -760,6 +760,16 @@ function switchPage(name, btn) {
   if (name === 'keys')    loadKeys();
   if (name === 'devices') loadBlocked();
 }
+
+// ── Version badge ─────────────────────────────────────────────────────────────
+async function loadVersion() {
+  const { stdout } = await sh(
+    "grep '^version=' /data/adb/modules/android_luks_mounter/module.prop 2>/dev/null | cut -d= -f2 | tr -d '[:space:]'"
+  );
+  const el = document.getElementById('ver');
+  el.textContent = stdout.trim() || 'unknown';
+}
+loadVersion();
 
 // ── Status / Dashboard ───────────────────────────────────────────────────────
 const MOUNTER = '/system/bin/mounter';
