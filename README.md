@@ -9,18 +9,47 @@ Authored with ❤️ by **Rex Ackermann**.
 
 ### Install (root shell one-liner)
 
-**KernelSU / APatch**
+The **online ZIP** downloads dependencies at flash time (needs network).
+The **offline ZIP** bundles everything — no network needed.
+
+<details open>
+<summary><b>KernelSU</b></summary>
+
 ```sh
+# Online
 curl -Lo /tmp/mounter.zip https://github.com/rexackermann/android-luks-mounter/releases/download/v1.5.56/android-luks-mounter-v1.5.56.zip && /data/adb/ksud module install /tmp/mounter.zip
 ```
-**Magisk**
 ```sh
+# Offline (no network at flash time)
+curl -Lo /tmp/mounter.zip https://github.com/rexackermann/android-luks-mounter/releases/download/v1.5.56/android-luks-mounter-v1.5.56-offline.zip && /data/adb/ksud module install /tmp/mounter.zip
+```
+</details>
+
+<details>
+<summary><b>APatch</b></summary>
+
+```sh
+# Online
+curl -Lo /tmp/mounter.zip https://github.com/rexackermann/android-luks-mounter/releases/download/v1.5.56/android-luks-mounter-v1.5.56.zip && apd module install /tmp/mounter.zip
+```
+```sh
+# Offline (no network at flash time)
+curl -Lo /tmp/mounter.zip https://github.com/rexackermann/android-luks-mounter/releases/download/v1.5.56/android-luks-mounter-v1.5.56-offline.zip && apd module install /tmp/mounter.zip
+```
+</details>
+
+<details>
+<summary><b>Magisk</b></summary>
+
+```sh
+# Online
 curl -Lo /tmp/mounter.zip https://github.com/rexackermann/android-luks-mounter/releases/download/v1.5.56/android-luks-mounter-v1.5.56.zip && magisk --install-module /tmp/mounter.zip
 ```
-**Offline (no network at flash time)**
 ```sh
-curl -Lo /tmp/mounter-offline.zip https://github.com/rexackermann/android-luks-mounter/releases/download/v1.5.56/android-luks-mounter-v1.5.56-offline.zip && /data/adb/ksud module install /tmp/mounter-offline.zip
+# Offline (no network at flash time)
+curl -Lo /tmp/mounter.zip https://github.com/rexackermann/android-luks-mounter/releases/download/v1.5.56/android-luks-mounter-v1.5.56-offline.zip && magisk --install-module /tmp/mounter.zip
 ```
+</details>
 
 </td><td valign="top" align="right" width="35%">
 

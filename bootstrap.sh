@@ -12,7 +12,8 @@
 
 MOUNTER_BIN="/data/adb/mounter/bin"
 MOUNTER_LIB="/data/adb/mounter/lib"
-TERMUX_REPO="https://packages.termux.dev/apt/termux-main"
+TERMUX_REPO_MAIN="https://packages.termux.dev/apt/termux-main"
+TERMUX_REPO_ROOT="https://packages.termux.dev/apt/termux-root"
 TMPDIR_BOOTSTRAP="/data/local/tmp/mounter_bootstrap"
 LOG="/data/local/tmp/mounter.log"
 NO_TERMUX_FLAG="/data/adb/mounter/.no_termux"
@@ -74,26 +75,60 @@ mkdir -p "$MOUNTER_BIN" "$MOUNTER_LIB" "$TMPDIR_BOOTSTRAP"
 chmod 700 "$MOUNTER_BIN" "$MOUNTER_LIB"
 
 # --- Package index (online only) ---
+# termux-exec + inotify-tools are in termux-main
+# cryptsetup + bindfs + ntfs-3g are in termux-root
 PACKAGES_FILE="$TMPDIR_BOOTSTRAP/Packages"
+PACKAGES_MAIN="$TMPDIR_BOOTSTRAP/Packages.main"
+PACKAGES_ROOT="$TMPDIR_BOOTSTRAP/Packages.root"
 if [ -z "$OFFLINE_DIR" ]; then
-    echo "[bootstrap] 🌐 Fetching package index ($TERMUX_ARCH)..." | tee -a "$LOG"
-    PACKAGES_URL="$TERMUX_REPO/dists/stable/main/binary-$TERMUX_ARCH/Packages"
-    if ! download "$PACKAGES_URL" "$PACKAGES_FILE"; then
-        download "${PACKAGES_URL}.xz" "${PACKAGES_FILE}.xz" && \
-            "$BUSYBOX" xz -d "${PACKAGES_FILE}.xz" || {
-            echo "[bootstrap] ❌ Could not fetch package index." | tee -a "$LOG"
-            exit 1
-        }
-    fi
+    echo "[bootstrap] 🌐 Fetching package indexes ($TERMUX_ARCH)..." | tee -a "$LOG"
+
+    fetch_index() {
+        local url_base="$1" out="$2"
+        # Try plain first (xz pipe is unreliable on some Android busybox builds)
+        download "$url_base/Packages" "$out" && return 0
+        download "$url_base/Packages.xz" "${out}.xz" && \
+            "$BUSYBOX" xz -d "${out}.xz" && return 0
+        return 1
+    }
+
+    MAIN_URL="$TERMUX_REPO_MAIN/dists/stable/main/binary-$TERMUX_ARCH"
+    ROOT_URL="$TERMUX_REPO_ROOT/dists/root/main/binary-$TERMUX_ARCH"
+
+    fetch_index "$MAIN_URL" "$PACKAGES_MAIN" || {
+        echo "[bootstrap] ❌ Could not fetch termux-main index." | tee -a "$LOG"; exit 1
+    }
+    fetch_index "$ROOT_URL" "$PACKAGES_ROOT" || {
+        echo "[bootstrap] ⚠️  Could not fetch termux-root index (cryptsetup/bindfs may fail)." | tee -a "$LOG"
+        touch "$PACKAGES_ROOT"
+    }
+
+    cat "$PACKAGES_MAIN" "$PACKAGES_ROOT" > "$PACKAGES_FILE"
+    echo "[bootstrap] 📦 Index: $(grep -c "^Package:" "$PACKAGES_FILE") packages" | tee -a "$LOG"
 fi
 
 resolve_deb() {
-    "$BUSYBOX" awk -v pkg="$1" '
+    local pkg="$1" fname
+    # Search main first, then root — return "repo_url|filename"
+    fname=$("$BUSYBOX" awk -v pkg="$pkg" '
         /^$/ { if (m && f) { print f; exit } m=0; f="" }
         /^Package: / { m=($2==pkg) }
         /^Filename: / { f=$2 }
         END { if (m && f) print f }
-    ' "$PACKAGES_FILE"
+    ' "$PACKAGES_MAIN" 2>/dev/null)
+    if [ -n "$fname" ]; then
+        echo "${TERMUX_REPO_MAIN}|${fname}"; return 0
+    fi
+    fname=$("$BUSYBOX" awk -v pkg="$pkg" '
+        /^$/ { if (m && f) { print f; exit } m=0; f="" }
+        /^Package: / { m=($2==pkg) }
+        /^Filename: / { f=$2 }
+        END { if (m && f) print f }
+    ' "$PACKAGES_ROOT" 2>/dev/null)
+    if [ -n "$fname" ]; then
+        echo "${TERMUX_REPO_ROOT}|${fname}"; return 0
+    fi
+    return 1
 }
 
 extract_deb() {
@@ -131,13 +166,15 @@ install_pkg() {
         fi
         cp "$found" "$deb_file"
     else
-        local rel_path
-        rel_path=$(resolve_deb "$pkg")
-        if [ -z "$rel_path" ]; then
+        local resolved repo_url rel_path
+        resolved=$(resolve_deb "$pkg")
+        if [ -z "$resolved" ]; then
             echo "[bootstrap] ${optional:+⚠️ }${optional:-❌} '$pkg' not in index." | tee -a "$LOG"
             return 1
         fi
-        if ! download "$TERMUX_REPO/$rel_path" "$deb_file"; then
+        repo_url="${resolved%%|*}"
+        rel_path="${resolved#*|}"
+        if ! download "$repo_url/$rel_path" "$deb_file"; then
             echo "[bootstrap] ${optional:+⚠️ }${optional:-❌} Download failed: $pkg" | tee -a "$LOG"
             return 1
         fi

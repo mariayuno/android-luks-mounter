@@ -27,20 +27,38 @@ jobs:
         run: |
           set -euo pipefail
           ARCH="${{ matrix.arch }}"
-          REPO="https://packages.termux.dev/apt/termux-main"
+          REPO_MAIN="https://packages.termux.dev/apt/termux-main"
+          REPO_ROOT="https://packages.termux.dev/apt/termux-root"
           OUTDIR="offline_debs/${ARCH}"
           TMP="$(mktemp -d)"
           mkdir -p "$OUTDIR"
 
-          # Packages we care about (termux-exec provides libtermux-exec.so)
+          # termux-exec + inotify-tools are in termux-main
+          # cryptsetup + bindfs + ntfs-3g are in termux-root
           PKGS="termux-exec cryptsetup bindfs inotify-tools ntfs-3g"
 
-          echo "→ fetching package index for $ARCH"
-          curl -sfL "$REPO/dists/stable/main/binary-$ARCH/Packages.xz" | xz -d > "$TMP/Packages" \
-            || curl -sfL "$REPO/dists/stable/main/binary-$ARCH/Packages" > "$TMP/Packages"
-          echo "  $(wc -l < "$TMP/Packages") lines"
+          fetch_index() {
+            local repo="$1" label="$2" out="$3"
+            echo "→ fetching $label index for $ARCH"
+            curl -sfL "$repo/dists/stable/main/binary-$ARCH/Packages.xz" \
+              | xz -d > "$out" 2>/dev/null \
+              || curl -sfL "$repo/dists/stable/main/binary-$ARCH/Packages" > "$out" \
+              || { echo "  ⚠ could not fetch $label index"; touch "$out"; }
+            echo "  $(wc -l < "$out") lines"
+          }
 
-          # Resolve transitive deps (adapted from rexshell CI)
+          fetch_index "$REPO_MAIN" "termux-main" "$TMP/Packages.main"
+          # termux-root uses /dists/root/ not /dists/stable/
+          echo "→ fetching termux-root index for $ARCH"
+          curl -sfL "$REPO_ROOT/dists/root/main/binary-$ARCH/Packages.xz" \
+            | xz -d > "$TMP/Packages.root" 2>/dev/null \
+            || curl -sfL "$REPO_ROOT/dists/root/main/binary-$ARCH/Packages" > "$TMP/Packages.root" \
+            || { echo "  ⚠ could not fetch termux-root index"; touch "$TMP/Packages.root"; }
+          echo "  $(wc -l < "$TMP/Packages.root") lines"
+
+          # Combined index for dep resolution — tag each line with its source repo
+          cat "$TMP/Packages.main" "$TMP/Packages.root" > "$TMP/Packages"
+
           resolve_deps() {
             local queue="$1" resolved=""
             while [ -n "$queue" ]; do
@@ -66,14 +84,19 @@ jobs:
 
           fetch_pkg() {
             local pkg="$1"
-            local fname
-            fname=$(awk "/^Package: ${pkg}\$/{f=1} f&&/^Filename:/{print \$2;exit}" "$TMP/Packages")
-            [ -z "$fname" ] && { echo "  ⚠ $pkg not in index — skipping"; return 1; }
-            # Sanitize filename: colons (Debian epoch e.g. "1:2.5.0") are invalid on NTFS
-            # and rejected by actions/upload-artifact. Replace with underscore.
+            local fname repo
+            # Search main index first, then root
+            fname=$(awk "/^Package: ${pkg}\$/{f=1} f&&/^Filename:/{print \$2;exit}" "$TMP/Packages.main")
+            if [ -n "$fname" ]; then
+              repo="$REPO_MAIN"
+            else
+              fname=$(awk "/^Package: ${pkg}\$/{f=1} f&&/^Filename:/{print \$2;exit}" "$TMP/Packages.root")
+              repo="$REPO_ROOT"
+            fi
+            [ -z "$fname" ] && { echo "  ⚠ $pkg not in any index — skipping"; return 1; }
             local safe_name
             safe_name=$(basename "$fname" | tr ':' '_')
-            curl -sfL "$REPO/$fname" -o "$OUTDIR/$safe_name"
+            curl -sfL "$repo/$fname" -o "$OUTDIR/$safe_name"
             echo "  ✓ $pkg → $safe_name"
           }
 
