@@ -686,6 +686,26 @@
   </div>
 </div>
 
+<!-- Delete Key Confirmation Modal -->
+<div class="modal-overlay" id="delete-key-modal">
+  <div class="modal">
+    <div class="modal-title">🗑️ Delete keyfile</div>
+    <div class="modal-desc">You are about to permanently destroy <span id="del-key-name" class="mono" style="color:var(--red)"></span>.<br>This cannot be undone. Any LUKS device relying on this key alone will be <strong>permanently locked</strong>.</div>
+    <div class="input-group" id="del-step-1">
+      <label class="input-label">Step 1 of 2 — type <span id="del-word-1" class="mono" style="color:var(--amber);user-select:none"></span> to continue</label>
+      <input type="text" id="del-input-1" placeholder="type the word…" autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter')deleteKeyStep()">
+    </div>
+    <div class="input-group" id="del-step-2" style="display:none">
+      <label class="input-label">Step 2 of 2 — type <span id="del-word-2" class="mono" style="color:var(--red);user-select:none"></span> to confirm deletion</label>
+      <input type="text" id="del-input-2" placeholder="type the word…" autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter')deleteKeyStep()">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeDeleteModal()">Cancel</button>
+      <button class="btn btn-danger" id="del-btn-next" onclick="deleteKeyStep()">Continue →</button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast container -->
 <div class="toast-wrap" id="toasts"></div>
 
@@ -998,10 +1018,146 @@ async function generateKey() {
   else toast('Failed to generate keyfile', 'error');
 }
 
-async function deleteKey(name) {
-  const { errno } = await sh(`rm -f '${KEY_DIR}/${name}'`);
-  if (errno === 0) { toast(`${name} deleted`, 'success'); loadKeys(); }
-  else toast('Delete failed', 'error');
+// ── Key deletion confirmation ─────────────────────────────────────────────────
+const DELETE_WORDS = [
+  // Nature & elements
+  "abyss","vortex","ember","glacier","tempest","inferno","miasma","torrent","quagmire","obsidian",
+  "crevice","magma","tundra","cyclone","sinkhole","blizzard","sulfur","quicksand","maelstrom","permafrost",
+  // Science & tech (edgy flavour)
+  "entropy","necrosis","botnet","rootkit","exploit","payload","overflow","deadlock","segfault","kernel",
+  "malware","firmware","cryptid","hashbang","shellcode","daemon","goblin","glitch","cascade","bitrot",
+  // Attitude
+  "reckless","brazen","savage","ruthless","vicious","relentless","defiant","insolent","brazen","feral",
+  "petulant","volatile","caustic","acerbic","truculent","belligerent","obstinate","audacious","impudent","brazen",
+  // Mild profanity (fun but not extreme)
+  "bastard","hellhole","crapshoot","damned","bloody","schmuck","jackass","numbskull","dingbat","dipstick",
+  "nitwit","halfwit","bonehead","knucklehead","meathead","blockhead","dunderhead","dimwit","doofus","nincompoop",
+  // Vivid / strange
+  "cadaver","maggot","pustule","gangrenous","festering","putrid","rancid","fetid","noxious","virulent",
+  "malignant","corrosive","abrasive","caustic","venomous","toxic","lethal","fatal","deadly","terminal",
+  // Dark / gothic
+  "wraith","specter","ghoul","banshee","lich","revenant","phantasm","apparition","poltergeist","shade",
+  "crypt","ossuary","catacomb","charnel","sepulcher","mausoleum","necropolis","purgatory","limbo","oblivion",
+  // Action / destruction
+  "shatter","obliterate","annihilate","eviscerate","incinerate","pulverize","demolish","decimate","ravage","pillage",
+  "ransack","plunder","desecrate","vandalize","sabotage","detonate","combust","implode","collapse","rupture",
+  // Abstract menace
+  "dread","anguish","torment","despair","misery","agony","suffering","anguish","tribulation","affliction",
+  "calamity","catastrophe","cataclysm","apocalypse","armageddon","reckoning","judgment","retribution","comeuppance","consequence",
+  // Quirky insults (harmless)
+  "muppet","muppetry","plonker","wazzock","muppet","numpty","eejit","gobshite","manky","grotty",
+  "minger","tosser","pillock","prat","berk","plank","divvy","dafty","chump","clot",
+  // Hacker/underground slang
+  "pwned","rooted","0wned","defaced","exfiltrated","pivoted","persisted","escalated","pivoted","lateral",
+  "foothold","beachhead","trojan","backdoor","implant","beacon","sinkhole","honeypot","canary","tripwire",
+  // Chemistry / danger
+  "cyanide","arsenic","hemlock","ricin","botulinum","venom","toxin","carcinogen","mutagen","pathogen",
+  "prion","retrovirus","hemorrhagic","necrotic","septic","gangrenous","purulent","abscessed","infected","contagious",
+  // Visceral adjectives
+  "gruesome","grisly","macabre","ghastly","harrowing","horrific","grotesque","monstrous","abhorrent","abominable",
+  "heinous","atrocious","despicable","nefarious","diabolical","sinister","malevolent","malicious","sadistic","vile",
+  // Old English / archaic menace
+  "wroth","smite","forsaken","accursed","wretched","damnable","pestilent","baleful","baneful","ruinous",
+  "woeful","doleful","grievous","dire","dreadful","fearsome","terrible","awful","dread","fell",
+  // Space / cosmic horror
+  "void","singularity","event horizon","neutron","pulsar","quasar","antimatter","dark matter","vacuum","entropy",
+  "extinction","heat death","cosmicide","stellarcide","detonation","supernova","collapse","implosion","annihilation","nothingness",
+  // Animals (dangerous)
+  "viper","mamba","taipan","fer-de-lance","bushmaster","cottonmouth","diamondback","copperhead","krayt","basilisk",
+  "wolverine","badger","cassowary","hippo","saltwater","crocodile","komodo","bullet ant","irukandji","deathstalker",
+  // Fungi / decay
+  "cordyceps","mycotoxin","aflatoxin","ergot","dry rot","blight","canker","rust","smut","mildew",
+  "decompose","putrefy","mortify","desiccate","wither","decay","rot","fester","suppurate","ulcerate",
+  // Random edgy nouns
+  "gallows","guillotine","gibbet","pillory","rack","thumbscrew","iron maiden","dungeon","oubliette","stockade",
+  "spiked","barbed","serrated","jagged","razored","lacerated","mangled","mutilated","severed","cleaved",
+  // Philosophical doom
+  "nihilism","fatalism","determinism","absurdism","existential","meaningless","futile","pointless","hopeless","doomed",
+  "inevitable","inescapable","inexorable","relentless","unstoppable","unforgiving","implacable","merciless","pitiless","remorseless",
+  // Internet / culture
+  "doomscroll","glasshole","techbro","disruptor","hustle","grindset","mindshare","synergy","paradigm","blockchain",
+  "disruption","pivoting","scalable","agile","sprint","bandwidth","unpack","leverage","circle back","low-hanging",
+  // Compound chaos
+  "shitstorm","clusterfuck","dumpsterfire","trainwreck","shitshow","hellscape","doomscape","cursed","blursed","godforsaken",
+  "mind-bending","soul-crushing","gut-wrenching","jaw-dropping","eye-watering","spine-chilling","blood-curdling","hair-raising","nerve-wracking","skin-crawling",
+  // Misc strong words
+  "relapse","fracture","hemorrhage","laceration","contusion","abrasion","concussion","tinnitus","vertigo","syncope",
+  "convulsion","seizure","aneurysm","embolism","infarction","necrosis","abscess","fistula","ulcer","gangrene",
+  // Randoms to hit 1000
+  "shrapnel","napalm","claymore","buckshot","flechette","thermite","incendiary","tracer","hollowpoint","jacketed",
+  "vorpal","eldritch","arcane","cursed","hexed","jinxed","bewitched","haunted","possessed","corrupted",
+  "tainted","despoiled","debased","degraded","defiled","profaned","violated","contaminated","polluted","poisoned",
+  "scorched","charred","carbonized","immolated","incinerated","calcined","vaporized","atomized","disintegrated","sublimated",
+  "fractured","splintered","shattered","crumbled","collapsed","buckled","warped","twisted","gnarled","mangled",
+  "desiccated","mummified","petrified","fossilized","calcified","ossified","sclerotic","atrophied","withered","shriveled",
+  "bloated","distended","engorged","swollen","inflamed","infected","septic","necrotic","gangrenous","putrefied",
+  "venomous","poisonous","toxic","noxious","hazardous","perilous","dangerous","treacherous","insidious","pernicious",
+  "malevolent","malicious","malignant","maleficent","malefic","baleful","baneful","sinister","diabolical","infernal",
+  "abyssal","stygian","cimmerian","tenebrous","crepuscular","umbral","penumbral","shadowy","murky","obscure",
+  "cryptic","enigmatic","inscrutable","unfathomable","incomprehensible","impenetrable","indecipherable","arcane","esoteric","occult"
+];
+
+let _delKeyTarget = null;
+let _delWord1 = null;
+let _delWord2 = null;
+let _delStep  = 1;
+
+function _randWord(exclude) {
+  let w;
+  do { w = DELETE_WORDS[Math.floor(Math.random() * DELETE_WORDS.length)]; } while (w === exclude);
+  return w;
+}
+
+function deleteKey(name) {
+  _delKeyTarget = name;
+  _delStep      = 1;
+  _delWord1     = _randWord(null);
+  _delWord2     = _randWord(_delWord1);
+
+  document.getElementById('del-key-name').textContent  = name;
+  document.getElementById('del-word-1').textContent    = _delWord1;
+  document.getElementById('del-word-2').textContent    = _delWord2;
+  document.getElementById('del-input-1').value         = '';
+  document.getElementById('del-input-2').value         = '';
+  document.getElementById('del-step-1').style.display  = '';
+  document.getElementById('del-step-2').style.display  = 'none';
+  document.getElementById('del-btn-next').textContent  = 'Continue →';
+  document.getElementById('del-btn-next').className    = 'btn btn-danger';
+  document.getElementById('delete-key-modal').classList.add('open');
+  setTimeout(() => document.getElementById('del-input-1').focus(), 80);
+}
+
+async function deleteKeyStep() {
+  if (_delStep === 1) {
+    const val = document.getElementById('del-input-1').value.trim();
+    if (val !== _delWord1) {
+      document.getElementById('del-input-1').style.outline = '2px solid var(--red)';
+      setTimeout(() => document.getElementById('del-input-1').style.outline = '', 800);
+      toast('Wrong word — try again', 'error');
+      return;
+    }
+    _delStep = 2;
+    document.getElementById('del-step-2').style.display = '';
+    document.getElementById('del-btn-next').textContent = 'Delete forever 🗑️';
+    setTimeout(() => document.getElementById('del-input-2').focus(), 80);
+  } else {
+    const val = document.getElementById('del-input-2').value.trim();
+    if (val !== _delWord2) {
+      document.getElementById('del-input-2').style.outline = '2px solid var(--red)';
+      setTimeout(() => document.getElementById('del-input-2').style.outline = '', 800);
+      toast('Wrong word — deletion cancelled', 'error');
+      return;
+    }
+    closeDeleteModal();
+    const { errno } = await sh(`rm -f '${KEY_DIR}/${_delKeyTarget}'`);
+    if (errno === 0) { toast(`${_delKeyTarget} deleted`, 'success'); loadKeys(); }
+    else toast('Delete failed', 'error');
+  }
+}
+
+function closeDeleteModal() {
+  document.getElementById('delete-key-modal').classList.remove('open');
+  _delKeyTarget = null;
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
