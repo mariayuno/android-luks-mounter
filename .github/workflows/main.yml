@@ -2,11 +2,13 @@ name: Build & Release
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
-    branches: [main]
+    branches:
+      - main
   schedule:
-    - cron: '0 2 * * 1'   # Weekly Monday 02:00 UTC
+    - cron: "0 2 * * 1" # Weekly Monday 02:00 UTC
   workflow_dispatch:
 
 permissions:
@@ -16,63 +18,98 @@ jobs:
   build:
     name: Build & Release
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ── Version bump ─────────────────────────────────────────────────────────
+      # ─────────────────────────────────────────────────────────────────────────────
+      # Version
+      # ─────────────────────────────────────────────────────────────────────────────
       - name: Bump version
-        id: ver
+        id: version
         shell: bash
         run: |
           set -euo pipefail
+
           PROP="module.prop"
-          OLD_CODE=$(grep '^versionCode=' "$PROP" | cut -d= -f2)
-          CURRENT=$(grep '^version=' "$PROP" | cut -d= -f2)
+
+          OLD_CODE="$(grep '^versionCode=' "$PROP" | cut -d= -f2)"
+          CURRENT="$(grep '^version=' "$PROP" | cut -d= -f2)"
           NEW_CODE=$((OLD_CODE + 1))
 
           if [[ "$CURRENT" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-            MAJOR="${BASH_REMATCH[1]}"; MINOR="${BASH_REMATCH[2]}"; PATCH="${BASH_REMATCH[3]}"
+            MAJOR="${BASH_REMATCH[1]}"
+            MINOR="${BASH_REMATCH[2]}"
+            PATCH="${BASH_REMATCH[3]}"
             PATCH=$((PATCH + 1))
           else
-            echo "ERROR: unexpected version format: $CURRENT"; exit 1
+            echo "ERROR: unexpected version format: $CURRENT"
+            exit 1
           fi
 
           VERSION="v${MAJOR}.${MINOR}.${PATCH}"
           ZIP="android-luks-mounter-${VERSION}.zip"
 
-          sed -i "s|^version=.*|version=${VERSION}|"         "$PROP"
+          sed -i "s|^version=.*|version=${VERSION}|" "$PROP"
           sed -i "s|^versionCode=.*|versionCode=${NEW_CODE}|" "$PROP"
 
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "code=$NEW_CODE"   >> "$GITHUB_OUTPUT"
-          echo "zip=$ZIP"         >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$VERSION"
+            echo "code=$NEW_CODE"
+            echo "zip=$ZIP"
+          } >> "$GITHUB_OUTPUT"
+
           echo "Bumped: $CURRENT → $VERSION (code $OLD_CODE → $NEW_CODE)"
 
-      # ── update.json ──────────────────────────────────────────────────────────
+      # ─────────────────────────────────────────────────────────────────────────────
+      # Update metadata
+      # ─────────────────────────────────────────────────────────────────────────────
       - name: Write update.json
+        shell: bash
         run: |
-          cat > update.json << ENDJSON
+          set -euo pipefail
+
+          cat > update.json <<'ENDJSON'
           {
-            "version": "${{ steps.ver.outputs.version }}",
-            "versionCode": ${{ steps.ver.outputs.code }},
-            "zipUrl": "https://github.com/${{ github.repository }}/releases/download/${{ steps.ver.outputs.version }}/${{ steps.ver.outputs.zip }}",
+            "version": "${{ steps.version.outputs.version }}",
+            "versionCode": ${{ steps.version.outputs.code }},
+            "zipUrl": "https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.version }}/${{ steps.version.outputs.zip }}",
             "changelog": "https://raw.githubusercontent.com/${{ github.repository }}/main/changelog.md"
           }
           ENDJSON
 
-      # ── Changelog ────────────────────────────────────────────────────────────
+      # ─────────────────────────────────────────────────────────────────────────────
+      # Changelog
+      # ─────────────────────────────────────────────────────────────────────────────
       - name: Generate changelog
         id: changelog
         shell: bash
         run: |
           set -euo pipefail
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+
+          LAST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
           RANGE="${LAST_TAG:+${LAST_TAG}..HEAD}"
-          LOG=$(git log ${RANGE:-HEAD} --pretty=format:"- %s (%h)" --no-merges \
-            | grep -v '^- chore: bump version' || true)
-          [ -z "$LOG" ] && LOG="- Minor update"
+
+          if [[ -n "$RANGE" ]]; then
+            LOG="$(
+              git log "$RANGE" \
+                --pretty=format:"- %s (%h)" \
+                --no-merges \
+              | grep -v '^- chore: bump version' || true
+            )"
+          else
+            LOG="$(
+              git log HEAD \
+                --pretty=format:"- %s (%h)" \
+                --no-merges \
+              | grep -v '^- chore: bump version' || true
+            )"
+          fi
+
+          [[ -z "$LOG" ]] && LOG="- Minor update"
 
           {
             echo "## What's changed"
@@ -82,116 +119,169 @@ jobs:
             echo "---"
             echo "SHA256 checksum is listed below."
           } > release_notes.md
+
           echo "notes_file=release_notes.md" >> "$GITHUB_OUTPUT"
 
-      # ── README install banner ─────────────────────────────────────────────────
-      - name: Update README install banner
+      # ─────────────────────────────────────────────────────────────────────────────
+      # README dynamic install block
+      #
+      # Only the region between INSTALL_START / INSTALL_END is rewritten.
+      # Everything else in README.md is intentionally preserved.
+      # ─────────────────────────────────────────────────────────────────────────────
+      - name: Update README install block
         shell: bash
         run: |
           set -euo pipefail
-          VERSION="${{ steps.ver.outputs.version }}"
-          CODE="${{ steps.ver.outputs.code }}"
+
+          VERSION="${{ steps.version.outputs.version }}"
+          CODE="${{ steps.version.outputs.code }}"
           REPO="https://github.com/${{ github.repository }}"
-          URL="$REPO/releases/latest/download/android-luks-mounter-${VERSION}.zip"
+          ZIP="${{ steps.version.outputs.zip }}"
+          URL="$REPO/releases/download/$VERSION/$ZIP"
 
           awk \
-            -v start='<!-- INSTALL_START -->' -v end='<!-- INSTALL_END -->' \
-            -v version="$VERSION" -v code="$CODE" \
-            -v url="$URL" -v repo="$REPO" \
-          '
-          $0==start {
-            print
-            print "<table><tr><td valign=\"top\" width=\"65%\">"
-            print ""
-            print "### Install (root shell one-liner)"
-            print ""
-            print "The **online ZIP** downloads dependencies at flash time (needs network)."
-            print ""
-            print "<details open>"
-            print "<summary><b>KernelSU</b></summary>"
-            print ""
-            print "```sh"
-            print "curl -Lo /tmp/mounter.zip " url " && /data/adb/ksud module install /tmp/mounter.zip"
-            print "```"
-            print "</details>"
-            print ""
-            print "<details>"
-            print "<summary><b>APatch</b></summary>"
-            print ""
-            print "```sh"
-            print "curl -Lo /tmp/mounter.zip " url " && apd module install /tmp/mounter.zip"
-            print "```"
-            print "</details>"
-            print ""
-            print "<details>"
-            print "<summary><b>Magisk</b></summary>"
-            print ""
-            print "```sh"
-            print "curl -Lo /tmp/mounter.zip " url " && magisk --install-module /tmp/mounter.zip"
-            print "```"
-            print "</details>"
-            print ""
-            print "</td><td valign=\"top\" align=\"right\" width=\"35%\">"
-            print ""
-            print "<p align=\"right\">"
-            print "<img src=\"https://img.shields.io/badge/version-" version "-7c3aed?style=for-the-badge&logo=github&logoColor=white\"><br>"
-            print "<img src=\"https://img.shields.io/badge/versionCode-" code "-2563eb?style=for-the-badge\"><br>"
-            print "<img src=\"https://img.shields.io/badge/arm64%20%2B%20arm-supported-0891b2?style=for-the-badge\"><br>"
-            print "<img src=\"https://img.shields.io/badge/Termux-required-ef4444?style=for-the-badge\">"
-            print "</p>"
-            print ""
-            print "</td></tr></table>"
-            print ""
-            in_block=1; next
-          }
-          $0==end { in_block=0; print; next }
-          !in_block { print }
-          ' README.md > README.md.tmp && mv README.md.tmp README.md
+            -v start='<!-- INSTALL_START -->' \
+            -v end='<!-- INSTALL_END -->' \
+            -v version="$VERSION" \
+            -v code="$CODE" \
+            -v url="$URL" \
+            '
+            $0 == start {
+              print
+              print ""
+              print "> [!TIP]"
+              print "> **Release:** `" version "`  ·  **versionCode:** `" code "`"
+              print ">"
+              print "> The commands below download the exact release asset produced by this workflow."
+              print ""
+              print "<details open>"
+              print "<summary><b>KernelSU</b></summary>"
+              print ""
+              print "```sh"
+              print "curl -fL -o /tmp/alm.zip " url " && /data/adb/ksud module install /tmp/alm.zip"
+              print "```"
+              print "</details>"
+              print ""
+              print "<details>"
+              print "<summary><b>APatch</b></summary>"
+              print ""
+              print "```sh"
+              print "curl -fL -o /tmp/alm.zip " url " && apd module install /tmp/alm.zip"
+              print "```"
+              print "</details>"
+              print ""
+              print "<details>"
+              print "<summary><b>Magisk</b></summary>"
+              print ""
+              print "```sh"
+              print "curl -fL -o /tmp/alm.zip " url " && magisk --install-module /tmp/alm.zip"
+              print "```"
+              print "</details>"
+              print ""
+              print "<details>"
+              print "<summary><b>ReSukiSU</b></summary>"
+              print ""
+              print "Flash the same release ZIP through your module manager UI."
+              print ""
+              print "</details>"
+              print ""
+              print "<table><tr><td valign=\"top\" width=\"50%\">"
+              print ""
+              print "<img src=\"https://img.shields.io/badge/release-" version "-7c3aed?style=for-the-badge&logo=github&logoColor=white\"><br>"
+              print "<img src=\"https://img.shields.io/badge/versionCode-" code "-2563eb?style=for-the-badge\"><br>"
+              print ""
+              print "</td><td valign=\"top\" width=\"50%\">"
+              print ""
+              print "<img src=\"https://img.shields.io/badge/ARM64%20%2B%20ARM-supported-0891b2?style=for-the-badge\"><br>"
+              print "<img src=\"https://img.shields.io/badge/Termux-required-ef4444?style=for-the-badge\"><br>"
+              print ""
+              print "</td></tr></table>"
+              print ""
+              in_block = 1
+              next
+            }
+            $0 == end {
+              in_block = 0
+              print
+              next
+            }
+            !in_block { print }
+            ' README.md > README.md.tmp
 
-      # ── Build ZIP ────────────────────────────────────────────────────────────
-      - name: Build ZIP
-        id: build
+          mv README.md.tmp README.md
+
+      # ─────────────────────────────────────────────────────────────────────────────
+      # Package
+      # ─────────────────────────────────────────────────────────────────────────────
+      - name: Build module ZIP
+        id: package
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="${{ steps.ver.outputs.zip }}"
-          EXCLUDE=(-x ".*" -x "__MACOSX" -x "*.git*" -x "$ZIP")
+
+          ZIP="${{ steps.version.outputs.zip }}"
+          EXCLUDE=(
+            -x ".*"
+            -x "__MACOSX"
+            -x "*.git*"
+            -x "$ZIP"
+          )
 
           zip -r9 "$ZIP" \
-            module.prop customize.sh post-fs-data.sh service.sh action.sh \
-            system/ webroot/ LICENSE README.md update.json \
+            module.prop \
+            customize.sh \
+            post-fs-data.sh \
+            service.sh \
+            action.sh \
+            system/ \
+            webroot/ \
+            LICENSE \
+            README.md \
+            update.json \
             "${EXCLUDE[@]}"
 
-          SHA=$(sha256sum "$ZIP" | cut -d' ' -f1)
+          SHA="$(sha256sum "$ZIP" | cut -d' ' -f1)"
+
           echo "SHA256: $SHA  $ZIP" >> release_notes.md
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
           ls -lh "$ZIP"
 
-      # ── Upload artifact ───────────────────────────────────────────────────────
-      - uses: actions/upload-artifact@v4
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.ver.outputs.zip }}
-          path: ${{ steps.ver.outputs.zip }}
+          name: ${{ steps.version.outputs.zip }}
+          path: ${{ steps.version.outputs.zip }}
           retention-days: 30
 
-      # ── Commit + release (main only) ──────────────────────────────────────────
-      - name: Commit version bump + README
+      # ─────────────────────────────────────────────────────────────────────────────
+      # Release — main branch only
+      # ─────────────────────────────────────────────────────────────────────────────
+      - name: Commit release metadata
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        shell: bash
         run: |
-          git config user.name  "github-actions[bot]"
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
           git add module.prop update.json README.md
-          git diff --cached --quiet || git commit -m "chore: bump version to ${{ steps.ver.outputs.version }} [skip ci]"
-          git push origin main
+
+          if ! git diff --cached --quiet; then
+            git commit \
+              -m "chore: bump version to ${{ steps.version.outputs.version }} [skip ci]"
+            git push origin main
+          fi
 
       - name: Create GitHub Release
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.ver.outputs.version }}
-          name:     ${{ steps.ver.outputs.version }}
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
           body_path: ${{ steps.changelog.outputs.notes_file }}
           make_latest: true
-          files: ${{ steps.ver.outputs.zip }}
+          files: ${{ steps.version.outputs.zip }}
           draft: false
           prerelease: false
