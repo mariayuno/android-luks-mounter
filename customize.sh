@@ -40,15 +40,49 @@ BOOTSTRAP_OK=0
 case "$DEVICE_ARCH" in
     aarch64|arm64)
         ui_print "[*] arm64 detected — attempting self-contained bootstrap..."
-        if sh "$MODPATH/bootstrap.sh"; then
-            BOOTSTRAP_OK=1
-            ui_print "✅ Bootstrap complete — Termux not required."
-        else
-            ui_print "⚠️  Bootstrap failed (no network?). Checking Termux fallback..."
+        # Prefer bundled offline debs (offline ZIP), fall back to network
+        OFFLINE_DEBS="$MODPATH/offline_debs/aarch64"
+        if [ -d "$OFFLINE_DEBS" ] && [ "$(ls "$OFFLINE_DEBS"/*.deb 2>/dev/null | wc -l)" -gt 0 ]; then
+            ui_print "[*] Offline debs found — installing without network..."
+            if sh "$MODPATH/bootstrap.sh" --offline "$OFFLINE_DEBS"; then
+                BOOTSTRAP_OK=1
+                ui_print "✅ Offline bootstrap complete — Termux not required."
+            else
+                ui_print "⚠️  Offline bootstrap failed. Trying network..."
+            fi
+        fi
+        if [ "$BOOTSTRAP_OK" -eq 0 ]; then
+            if sh "$MODPATH/bootstrap.sh"; then
+                BOOTSTRAP_OK=1
+                ui_print "✅ Bootstrap complete — Termux not required."
+            else
+                ui_print "⚠️  Bootstrap failed (no network?). Checking Termux fallback..."
+            fi
+        fi
+        ;;
+    armv7*|armv8l|arm)
+        ui_print "[*] arm (32-bit) detected — attempting self-contained bootstrap..."
+        OFFLINE_DEBS="$MODPATH/offline_debs/arm"
+        if [ -d "$OFFLINE_DEBS" ] && [ "$(ls "$OFFLINE_DEBS"/*.deb 2>/dev/null | wc -l)" -gt 0 ]; then
+            ui_print "[*] Offline debs found — installing without network..."
+            if sh "$MODPATH/bootstrap.sh" --offline "$OFFLINE_DEBS"; then
+                BOOTSTRAP_OK=1
+                ui_print "✅ Offline bootstrap complete — Termux not required."
+            else
+                ui_print "⚠️  Offline bootstrap failed. Trying network..."
+            fi
+        fi
+        if [ "$BOOTSTRAP_OK" -eq 0 ]; then
+            if sh "$MODPATH/bootstrap.sh"; then
+                BOOTSTRAP_OK=1
+                ui_print "✅ Bootstrap complete — Termux not required."
+            else
+                ui_print "⚠️  Bootstrap failed. Checking Termux fallback..."
+            fi
         fi
         ;;
     *)
-        ui_print "⚠️  32-bit device detected — bootstrap not supported."
+        ui_print "⚠️  Unsupported arch ($DEVICE_ARCH) — bootstrap not supported."
         ui_print "⚠️  Falling back to Termux. See README for details."
         ;;
 esac
