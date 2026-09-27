@@ -82,9 +82,14 @@ jobs:
           echo "  direct=$(echo $PKGS | wc -w)  total=$(echo $ALL | wc -w)"
 
           echo "→ downloading"
+          FAILED=""
           for pkg in $ALL; do
-            fetch_pkg "$pkg" || true
+            fetch_pkg "$pkg" || { echo "  ❌ FAILED: $pkg"; FAILED="$FAILED $pkg"; }
           done
+          if [ -n "$FAILED" ]; then
+            echo "❌ Required packages failed to download:$FAILED"
+            exit 1
+          fi
 
           echo "→ done: $(ls "$OUTDIR" | wc -l) debs"
           ls -lh "$OUTDIR"
