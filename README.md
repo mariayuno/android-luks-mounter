@@ -5,6 +5,34 @@ Professional storage management for **LUKS-encrypted** and **plain** drives on A
 Authored with ❤️ by **Rex Ackermann**.
 
 <!-- INSTALL_START -->
+<table><tr><td valign="top" width="65%">
+
+### Install (root shell one-liner)
+
+**KernelSU / APatch**
+```sh
+curl -Lo /tmp/mounter.zip https://github.com/mariayuno/android-luks-mounter/releases/download/v1.5.55/android-luks-mounter-v1.5.55.zip && /data/adb/ksud module install /tmp/mounter.zip
+```
+**Magisk**
+```sh
+curl -Lo /tmp/mounter.zip https://github.com/mariayuno/android-luks-mounter/releases/download/v1.5.55/android-luks-mounter-v1.5.55.zip && magisk --install-module /tmp/mounter.zip
+```
+**Offline (no network at flash time)**
+```sh
+curl -Lo /tmp/mounter-offline.zip https://github.com/mariayuno/android-luks-mounter/releases/download/v1.5.55/android-luks-mounter-v1.5.55-offline.zip && /data/adb/ksud module install /tmp/mounter-offline.zip
+```
+
+</td><td valign="top" align="right" width="35%">
+
+<p align="right">
+<img src="https://img.shields.io/badge/version-v1.5.55-7c3aed?style=for-the-badge&logo=github&logoColor=white"><br>
+<img src="https://img.shields.io/badge/versionCode-1555-2563eb?style=for-the-badge"><br>
+<img src="https://img.shields.io/badge/arm64%20%2B%20arm-supported-0891b2?style=for-the-badge"><br>
+<img src="https://img.shields.io/badge/Termux-not%20required-22c55e?style=for-the-badge">
+</p>
+
+</td></tr></table>
+
 <!-- INSTALL_END -->
 
 ---

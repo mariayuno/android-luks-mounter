@@ -1,6 +1,6 @@
 {
-    "version": "v1.5.54",
-    "versionCode": 1554,
-    "zipUrl": "https://github.com/mariayuno/android-luks-mounter/releases/download/v1.5.54/android-luks-mounter-v1.5.54.zip",
-    "changelog": "https://raw.githubusercontent.com/mariayuno/android-luks-mounter/main/changelog.md"
+  "version": "v1.5.55",
+  "versionCode": 1555,
+  "zipUrl": "https://github.com/mariayuno/android-luks-mounter/releases/download/v1.5.55/android-luks-mounter-v1.5.55.zip",
+  "changelog": "https://raw.githubusercontent.com/mariayuno/android-luks-mounter/main/changelog.md"
 }
