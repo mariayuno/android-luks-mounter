@@ -4,6 +4,37 @@ Professional storage management for **LUKS-encrypted** and **plain** drives on A
 
 Authored with ❤️ by **Rex Ackermann**.
 
+<!-- INSTALL_START -->
+<table><tr><td valign="top" width="65%">
+
+### Install (root shell one-liner)
+
+**KernelSU / APatch**
+```sh
+curl -Lo /tmp/mounter.zip https://github.com/mariayuno/android-luks-mounter/releases/download/v1.5.55/android-luks-mounter-v1.5.55.zip && /data/adb/ksud module install /tmp/mounter.zip
+```
+**Magisk**
+```sh
+curl -Lo /tmp/mounter.zip https://github.com/mariayuno/android-luks-mounter/releases/download/v1.5.55/android-luks-mounter-v1.5.55.zip && magisk --install-module /tmp/mounter.zip
+```
+**Offline (no network at flash time)**
+```sh
+curl -Lo /tmp/mounter-offline.zip https://github.com/mariayuno/android-luks-mounter/releases/download/v1.5.55/android-luks-mounter-v1.5.55-offline.zip && /data/adb/ksud module install /tmp/mounter-offline.zip
+```
+
+</td><td valign="top" align="right" width="35%">
+
+<p align="right">
+<img src="https://img.shields.io/badge/version-v1.5.55-7c3aed?style=for-the-badge&logo=github&logoColor=white"><br>
+<img src="https://img.shields.io/badge/versionCode-1555-2563eb?style=for-the-badge"><br>
+<img src="https://img.shields.io/badge/arm64%20%2B%20arm-supported-0891b2?style=for-the-badge"><br>
+<img src="https://img.shields.io/badge/Termux-not%20required-22c55e?style=for-the-badge">
+</p>
+
+</td></tr></table>
+
+<!-- INSTALL_END -->
+
 ---
 
 ## 👤 Author Information
@@ -56,20 +87,23 @@ The WebUI bridge layer is compatible with all major KernelSU-based managers:
 ---
 
 ## 🛠️ Prerequisites & Requirements
-> [!IMPORTANT]
-> **Dependencies are mandatory for ALL installation methods!** Even if you use the flashable module, you must install the core tools in Termux.
 
-1. **🔑 Root Access**: Required for low-level block device operations (KernelSU, APatch, ReSukiSU, or Magisk).
-2. **📟 Termux Environment**: The engine that provides necessary libraries.
-3. **📦 Terminal Dependencies**:
-   Open Termux and run:
-   ```bash
-   pkg update && pkg upgrade
-   pkg install root-repo
-   pkg install cryptsetup bindfs util-linux mount-utils blk-utils
-   pkg install inotify-tools   # recommended: enables instant plug/unplug detection
+1. **🔑 Root Access**: KernelSU, APatch, ReSukiSU, or Magisk.
+
+2. **📦 Dependencies** — handled automatically. Termux is **not required**.
+
+   | Architecture | Online ZIP | Offline ZIP |
+   |---|---|---|
+   | **arm64 (aarch64)** | Downloads deps at flash time | Bundled — no network needed |
+   | **arm (32-bit)** | Downloads deps at flash time | Bundled — no network needed |
+
+   > [!NOTE]
+   > If bootstrap fails (no network and not using the offline ZIP), the installer falls back to Termux if installed, then aborts with instructions.
+
+   **To ignore Termux entirely** even if installed:
+   ```sh
+   touch /data/adb/mounter/.no_termux
    ```
-
 ---
 
 ## 🚀 Installation
@@ -85,7 +119,7 @@ The WebUI bridge layer is compatible with all major KernelSU-based managers:
 
 ### 📁 Automatic Mode (Plug & Play)
 Once installed and rebooted, simply plug in your drive. The background service will:
-1. Detect the drive instantly via inotify on `/dev/block` (requires `pkg install inotify-tools`), or within 60 s via the health-check poll if not installed.
+1. Detect the drive instantly via inotify on `/dev/block` (bootstrapped automatically on arm64; on 32-bit install `inotify-tools` in Termux), or within 60 s via the health-check poll if unavailable.
 2. Auto-unlock it if a key exists in `/data/adb/mounter/`.
 3. Mount it to your configured path (default: `/sdcard/ext/label`).
 4. Clean up bindfs views and LUKS mappers automatically on unplug.
