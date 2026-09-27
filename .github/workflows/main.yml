@@ -6,174 +6,278 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    # Weekly rebuild every Monday 02:00 UTC — picks up latest Termux package versions
-    - cron: '0 2 * * 1'
+    - cron: '0 2 * * 1'   # Weekly Monday 02:00 UTC — picks up latest Termux packages
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  # ── Download latest .deb files from Termux repo for both arches ────────────
+  # ── Fetch .deb files + transitive deps for both arches ─────────────────────
   fetch-debs:
-    name: Fetch Termux debs
+    name: Fetch debs (${{ matrix.arch }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
         arch: [aarch64, arm]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Fetch debs for ${{ matrix.arch }}
         run: |
-          set -e
+          set -euo pipefail
           ARCH="${{ matrix.arch }}"
           REPO="https://packages.termux.dev/apt/termux-main"
           OUTDIR="offline_debs/${ARCH}"
+          TMP="$(mktemp -d)"
           mkdir -p "$OUTDIR"
 
-          # Fetch and decompress Packages index
-          curl -fsSL "${REPO}/dists/stable/main/binary-${ARCH}/Packages" -o Packages || \
-            { curl -fsSL "${REPO}/dists/stable/main/binary-${ARCH}/Packages.xz" -o Packages.xz && xz -d Packages.xz; }
+          # Packages we care about (termux-exec provides libtermux-exec.so)
+          PKGS="termux-exec cryptsetup bindfs inotify-tools ntfs-3g"
 
-          # Resolve and download each package
-          resolve_deb() {
-            local pkg="$1"
-            awk -v pkg="$pkg" '
-              /^$/ { if (m && f) { print f; exit } m=0; f="" }
-              /^Package: / { m=($2==pkg) }
-              /^Filename: / { f=$2 }
-              END { if (m && f) print f }
-            ' Packages
+          echo "→ fetching package index for $ARCH"
+          curl -sfL "$REPO/dists/stable/main/binary-$ARCH/Packages.xz" | xz -d > "$TMP/Packages" \
+            || curl -sfL "$REPO/dists/stable/main/binary-$ARCH/Packages" > "$TMP/Packages"
+          echo "  $(wc -l < "$TMP/Packages") lines"
+
+          # Resolve transitive deps (adapted from rexshell CI)
+          resolve_deps() {
+            local queue="$1" resolved=""
+            while [ -n "$queue" ]; do
+              local pkg; pkg=$(echo "$queue" | awk '{print $1}')
+              queue=$(echo "$queue" | cut -d' ' -f2-)
+              [ "$queue" = "$pkg" ] && queue=""
+              echo " $resolved " | grep -q " $pkg " && continue || true
+              resolved="$resolved $pkg"
+              local deps
+              deps=$(awk "
+                /^Package: ${pkg}\$/ { f=1 }
+                f && /^Depends:/     { gsub(/^Depends: /,\"\"); print; f=0 }
+                f && /^\$/           { f=0 }
+              " "$TMP/Packages" \
+                | tr ',' '\n' | sed 's/|[^,]*//' | sed 's/ (.*//' \
+                | tr -d ' ' | grep -v '^$' || true)
+              for dep in $deps; do
+                echo " $resolved $queue " | grep -q " $dep " || queue="$queue $dep" || true
+              done
+            done
+            echo "$resolved"
           }
 
-          for pkg in cryptsetup bindfs inotify-tools ntfs-3g; do
-            rel=$(resolve_deb "$pkg")
-            if [ -z "$rel" ]; then
-              echo "⚠️  $pkg not found in index for $ARCH — skipping"
-              continue
-            fi
-            echo "📥 $pkg → $rel"
-            curl -fsSL "${REPO}/${rel}" -o "${OUTDIR}/$(basename "$rel")"
+          fetch_pkg() {
+            local pkg="$1"
+            local fname
+            fname=$(awk "/^Package: ${pkg}\$/{f=1} f&&/^Filename:/{print \$2;exit}" "$TMP/Packages")
+            [ -z "$fname" ] && { echo "  ⚠ $pkg not in index — skipping"; return 1; }
+            curl -sfL "$REPO/$fname" -o "$OUTDIR/$(basename "$fname")"
+            echo "  ✓ $pkg → $(basename "$fname")"
+          }
+
+          echo "→ resolving transitive deps"
+          ALL=$(resolve_deps "$PKGS")
+          echo "  direct=$(echo $PKGS | wc -w)  total=$(echo $ALL | wc -w)"
+
+          echo "→ downloading"
+          for pkg in $ALL; do
+            fetch_pkg "$pkg" || true
           done
 
-          echo "📦 Downloaded for $ARCH:"
+          echo "→ done: $(ls "$OUTDIR" | wc -l) debs"
           ls -lh "$OUTDIR"
 
-      - name: Upload deb artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: debs-${{ matrix.arch }}
           path: offline_debs/${{ matrix.arch }}/
           retention-days: 7
 
-  # ── Build both ZIPs ─────────────────────────────────────────────────────────
+  # ── Build online + offline ZIPs and release ─────────────────────────────────
   build:
     name: Build & Release
     runs-on: ubuntu-latest
     needs: fetch-debs
-
+    # Don't release on PRs, but do build so the ZIP can be downloaded as an artifact
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ── Version bump ────────────────────────────────────────────────────────
-      - name: Compute & bump version
+      # ── Version bump (imgdrive-style: proper semver, versionCode++) ──────────
+      - name: Bump version
         id: ver
+        shell: bash
         run: |
-          CURRENT=$(grep '^version=' module.prop | cut -d= -f2)
-          BASE=$(echo "$CURRENT" | sed 's/^v//;s/-.*//')
-          MAJOR=$(echo "$BASE" | cut -d. -f1)
-          MINOR=$(echo "$BASE" | cut -d. -f2)
-          PATCH=$(echo "$BASE" | cut -d. -f3)
-          PATCH=$((PATCH + 1))
+          set -euo pipefail
+          PROP="module.prop"
+          OLD_CODE=$(grep '^versionCode=' "$PROP" | cut -d= -f2)
+          CURRENT=$(grep '^version=' "$PROP" | cut -d= -f2)
+          NEW_CODE=$((OLD_CODE + 1))
+
+          if [[ "$CURRENT" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            MAJOR="${BASH_REMATCH[1]}"; MINOR="${BASH_REMATCH[2]}"; PATCH="${BASH_REMATCH[3]}"
+            PATCH=$((PATCH + 1))
+          else
+            echo "ERROR: unexpected version format: $CURRENT"; exit 1
+          fi
+
           VERSION="v${MAJOR}.${MINOR}.${PATCH}"
-          CODE="${MAJOR}${MINOR}${PATCH}"
           ZIP="android-luks-mounter-${VERSION}.zip"
           ZIP_OFFLINE="android-luks-mounter-${VERSION}-offline.zip"
 
-          echo "version=$VERSION"      >> "$GITHUB_OUTPUT"
-          echo "code=$CODE"            >> "$GITHUB_OUTPUT"
-          echo "zip=$ZIP"              >> "$GITHUB_OUTPUT"
-          echo "zip_offline=$ZIP_OFFLINE" >> "$GITHUB_OUTPUT"
-          echo "Bumped: $CURRENT → $VERSION ($CODE)"
+          sed -i "s|^version=.*|version=${VERSION}|"         "$PROP"
+          sed -i "s|^versionCode=.*|versionCode=${NEW_CODE}|" "$PROP"
 
-      - name: Write version to module.prop and update.json
+          echo "version=$VERSION"           >> "$GITHUB_OUTPUT"
+          echo "code=$NEW_CODE"             >> "$GITHUB_OUTPUT"
+          echo "zip=$ZIP"                   >> "$GITHUB_OUTPUT"
+          echo "zip_offline=$ZIP_OFFLINE"   >> "$GITHUB_OUTPUT"
+          echo "Bumped: $CURRENT → $VERSION (code $OLD_CODE → $NEW_CODE)"
+
+      # ── update.json ──────────────────────────────────────────────────────────
+      - name: Write update.json
         run: |
-          VERSION="${{ steps.ver.outputs.version }}"
-          CODE="${{ steps.ver.outputs.code }}"
-          ZIP="${{ steps.ver.outputs.zip }}"
-
-          sed -i "s|^version=.*|version=${VERSION}|"       module.prop
-          sed -i "s|^versionCode=.*|versionCode=${CODE}|"  module.prop
-
           cat > update.json << ENDJSON
           {
-              "version": "${VERSION}",
-              "versionCode": ${CODE},
-              "zipUrl": "https://github.com/${{ github.repository }}/releases/download/${VERSION}/${ZIP}",
-              "changelog": "https://raw.githubusercontent.com/${{ github.repository }}/main/changelog.md"
+            "version": "${{ steps.ver.outputs.version }}",
+            "versionCode": ${{ steps.ver.outputs.code }},
+            "zipUrl": "https://github.com/${{ github.repository }}/releases/download/${{ steps.ver.outputs.version }}/${{ steps.ver.outputs.zip }}",
+            "changelog": "https://raw.githubusercontent.com/${{ github.repository }}/main/changelog.md"
           }
           ENDJSON
 
-      # ── Download debs from fetch-debs job ───────────────────────────────────
-      - name: Download aarch64 debs
-        uses: actions/download-artifact@v4
-        with:
-          name: debs-aarch64
-          path: offline_debs/aarch64/
-
-      - name: Download arm debs
-        uses: actions/download-artifact@v4
-        with:
-          name: debs-arm
-          path: offline_debs/arm/
-
-      # ── Online ZIP (no bundled debs — downloads at flash time) ──────────────
-      - name: Build online ZIP
+      # ── Changelog (imgdrive-style: git log since last tag) ───────────────────
+      - name: Generate changelog
+        id: changelog
+        shell: bash
         run: |
+          set -euo pipefail
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          RANGE="${LAST_TAG:+${LAST_TAG}..HEAD}"
+          LOG=$(git log ${RANGE:-HEAD} --pretty=format:"- %s (%h)" --no-merges \
+            | grep -v '^- chore: bump version' || true)
+          [ -z "$LOG" ] && LOG="- Minor update"
+
+          {
+            echo "## What's changed"
+            echo
+            echo "$LOG"
+            echo
+            echo "---"
+            echo "SHA256 checksums are listed below."
+          } > release_notes.md
+          echo "notes_file=release_notes.md" >> "$GITHUB_OUTPUT"
+
+      # ── README install banner (imgdrive-style marker injection) ──────────────
+      - name: Update README install banner
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.ver.outputs.version }}"
+          CODE="${{ steps.ver.outputs.code }}"
           ZIP="${{ steps.ver.outputs.zip }}"
+          ZIP_OFFLINE="${{ steps.ver.outputs.zip_offline }}"
+          REPO="https://github.com/${{ github.repository }}"
+          URL_ONLINE="${REPO}/releases/download/${VERSION}/${ZIP}"
+          URL_OFFLINE="${REPO}/releases/download/${VERSION}/${ZIP_OFFLINE}"
+
+          awk \
+            -v start='<!-- INSTALL_START -->' -v end='<!-- INSTALL_END -->' \
+            -v version="$VERSION" -v code="$CODE" \
+            -v zip="$ZIP" -v zip_offline="$ZIP_OFFLINE" \
+            -v url_online="$URL_ONLINE" -v url_offline="$URL_OFFLINE" \
+          '
+          $0==start {
+            print
+            print "<table><tr><td valign=\"top\" width=\"65%\">"
+            print ""
+            print "### Install (root shell one-liner)"
+            print ""
+            print "**KernelSU / APatch**"
+            print "```sh"
+            print "curl -Lo /tmp/mounter.zip " url_online " && /data/adb/ksud module install /tmp/mounter.zip"
+            print "```"
+            print "**Magisk**"
+            print "```sh"
+            print "curl -Lo /tmp/mounter.zip " url_online " && magisk --install-module /tmp/mounter.zip"
+            print "```"
+            print "**Offline (no network at flash time)**"
+            print "```sh"
+            print "curl -Lo /tmp/mounter-offline.zip " url_offline " && /data/adb/ksud module install /tmp/mounter-offline.zip"
+            print "```"
+            print ""
+            print "</td><td valign=\"top\" align=\"right\" width=\"35%\">"
+            print ""
+            print "<p align=\"right\">"
+            print "<img src=\"https://img.shields.io/badge/version-" version "-7c3aed?style=for-the-badge&logo=github&logoColor=white\"><br>"
+            print "<img src=\"https://img.shields.io/badge/versionCode-" code "-2563eb?style=for-the-badge\"><br>"
+            print "<img src=\"https://img.shields.io/badge/arm64%20%2B%20arm-supported-0891b2?style=for-the-badge\"><br>"
+            print "<img src=\"https://img.shields.io/badge/Termux-not%20required-22c55e?style=for-the-badge\">"
+            print "</p>"
+            print ""
+            print "</td></tr></table>"
+            print ""
+            in_block=1; next
+          }
+          $0==end { in_block=0; print; next }
+          !in_block { print }
+          ' README.md > README.md.tmp && mv README.md.tmp README.md
+
+      # ── Download debs ────────────────────────────────────────────────────────
+      - uses: actions/download-artifact@v4
+        with: { name: debs-aarch64, path: offline_debs/aarch64/ }
+      - uses: actions/download-artifact@v4
+        with: { name: debs-arm, path: offline_debs/arm/ }
+
+      # ── Build ZIPs ───────────────────────────────────────────────────────────
+      - name: Build ZIPs
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP="${{ steps.ver.outputs.zip }}"
+          ZIP_OFFLINE="${{ steps.ver.outputs.zip_offline }}"
+          EXCLUDE=(-x ".*" -x "__MACOSX" -x "*.git*" -x "$ZIP" -x "$ZIP_OFFLINE")
+
           zip -r9 "$ZIP" \
             module.prop customize.sh post-fs-data.sh service.sh action.sh \
-            bootstrap.sh system/ webroot/ LICENSE README.md \
-            -x ".*" -x "__MACOSX" -x "*.git*"
-          echo "Online ZIP: $(ls -lh "$ZIP" | awk '{print $5, $9}')"
+            bootstrap.sh system/ webroot/ LICENSE README.md update.json \
+            "${EXCLUDE[@]}"
 
-      # ── Offline ZIP (debs bundled for all arches — no network needed) ────────
-      - name: Build offline ZIP
-        run: |
-          ZIP_OFFLINE="${{ steps.ver.outputs.zip_offline }}"
           zip -r9 "$ZIP_OFFLINE" \
             module.prop customize.sh post-fs-data.sh service.sh action.sh \
-            bootstrap.sh system/ webroot/ LICENSE README.md \
+            bootstrap.sh system/ webroot/ LICENSE README.md update.json \
             offline_debs/ \
-            -x ".*" -x "__MACOSX" -x "*.git*"
-          echo "Offline ZIP: $(ls -lh "$ZIP_OFFLINE" | awk '{print $5, $9}')"
+            "${EXCLUDE[@]}"
 
-      # ── Upload artifacts (PRs + main) ────────────────────────────────────────
-      - name: Upload online ZIP artifact
-        uses: actions/upload-artifact@v4
+          SHA_ONLINE=$(sha256sum "$ZIP"         | cut -d' ' -f1)
+          SHA_OFFLINE=$(sha256sum "$ZIP_OFFLINE" | cut -d' ' -f1)
+
+          echo "SHA256 (online):  $SHA_ONLINE  $ZIP"   >> release_notes.md
+          echo "SHA256 (offline): $SHA_OFFLINE  $ZIP_OFFLINE" >> release_notes.md
+
+          echo "sha_online=$SHA_ONLINE"   >> "$GITHUB_OUTPUT"
+          echo "sha_offline=$SHA_OFFLINE" >> "$GITHUB_OUTPUT"
+          ls -lh "$ZIP" "$ZIP_OFFLINE"
+
+      # ── Upload artifacts (available on PRs too) ───────────────────────────────
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.ver.outputs.zip }}
           path: ${{ steps.ver.outputs.zip }}
           retention-days: 30
-
-      - name: Upload offline ZIP artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.ver.outputs.zip_offline }}
           path: ${{ steps.ver.outputs.zip_offline }}
           retention-days: 30
 
-      # ── Commit version bump + release (main only, not PRs) ──────────────────
-      - name: Commit version bump
+      # ── Commit + release (main branch only, not PRs) ─────────────────────────
+      - name: Commit version bump + README
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add module.prop update.json
+          git add module.prop update.json README.md
           git diff --cached --quiet || git commit -m "chore: bump version to ${{ steps.ver.outputs.version }} [skip ci]"
           git push origin main
 
@@ -182,29 +286,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.version }}
-          name: ${{ steps.ver.outputs.version }}
-          body: |
-            ## Android LUKS Mounter ${{ steps.ver.outputs.version }}
-
-            Auto-built from commit ${{ github.sha }}
-
-            ### Two flavours
-
-            | ZIP | Size | When to use |
-            |-----|------|-------------|
-            | `${{ steps.ver.outputs.zip }}` | small | Device has internet at flash time |
-            | `${{ steps.ver.outputs.zip_offline }}` | larger | No internet at flash, or airgapped |
-
-            Both support **arm64 and arm (32-bit)**. Termux is **not required**.
-
-            ### Install
-            Flash the ZIP in KernelSU, APatch, or Magisk then reboot.
-
-            ### Ignore Termux entirely (optional)
-            If Termux is installed but you want the module to never touch it:
-            ```sh
-            touch /data/adb/mounter/.no_termux
-            ```
+          name:     ${{ steps.ver.outputs.version }}
+          body_path: ${{ steps.changelog.outputs.notes_file }}
+          make_latest: true
           files: |
             ${{ steps.ver.outputs.zip }}
             ${{ steps.ver.outputs.zip_offline }}

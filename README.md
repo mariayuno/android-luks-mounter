@@ -4,6 +4,9 @@ Professional storage management for **LUKS-encrypted** and **plain** drives on A
 
 Authored with ❤️ by **Rex Ackermann**.
 
+<!-- INSTALL_START -->
+<!-- INSTALL_END -->
+
 ---
 
 ## 👤 Author Information
@@ -57,25 +60,22 @@ The WebUI bridge layer is compatible with all major KernelSU-based managers:
 
 ## 🛠️ Prerequisites & Requirements
 
-1. **🔑 Root Access**: Required for low-level block device operations (KernelSU, APatch, ReSukiSU, or Magisk).
+1. **🔑 Root Access**: KernelSU, APatch, ReSukiSU, or Magisk.
 
-2. **📦 Dependencies** — how they are sourced depends on your device architecture:
+2. **📦 Dependencies** — handled automatically. Termux is **not required**.
 
-   | Architecture | How dependencies are installed |
-   |---|---|
-   | **arm64 (aarch64)** | Downloaded automatically from the Termux package repo at flash time. **Termux does not need to be installed.** |
-   | **arm (32-bit)** | Must be installed manually in Termux (see below). Bootstrap is arm64-only. |
-
-   > [!WARNING]
-   > **32-bit (armv7) devices are not supported by the self-contained bootstrap.** On these devices, Termux remains required. Install dependencies manually in Termux:
-   > ```bash
-   > pkg install root-repo
-   > pkg install cryptsetup bindfs util-linux mount-utils blk-utils inotify-tools
-   > ```
+   | Architecture | Online ZIP | Offline ZIP |
+   |---|---|---|
+   | **arm64 (aarch64)** | Downloads deps at flash time | Bundled — no network needed |
+   | **arm (32-bit)** | Downloads deps at flash time | Bundled — no network needed |
 
    > [!NOTE]
-   > On arm64, if the device has no network at flash time, the installer will fall back to checking for Termux and abort with instructions if neither source is available.
+   > If bootstrap fails (no network and not using the offline ZIP), the installer falls back to Termux if installed, then aborts with instructions.
 
+   **To ignore Termux entirely** even if installed:
+   ```sh
+   touch /data/adb/mounter/.no_termux
+   ```
 ---
 
 ## 🚀 Installation
