@@ -57,24 +57,25 @@ The WebUI bridge layer is compatible with all major KernelSU-based managers:
 
 ## 🛠️ Prerequisites & Requirements
 
-1. **🔑 Root Access**: Required for low-level block device operations (KernelSU, APatch, ReSukiSU, or Magisk).
+1. **🔑 Root Access**: KernelSU, APatch, ReSukiSU, or Magisk.
 
-2. **📦 Dependencies** — how they are sourced depends on your device architecture:
+2. **📦 Dependencies** — handled automatically at flash time:
 
-   | Architecture | How dependencies are installed |
-   |---|---|
-   | **arm64 (aarch64)** | Downloaded automatically from the Termux package repo at flash time. **Termux does not need to be installed.** |
-   | **arm (32-bit)** | Must be installed manually in Termux (see below). Bootstrap is arm64-only. |
-
-   > [!WARNING]
-   > **32-bit (armv7) devices are not supported by the self-contained bootstrap.** On these devices, Termux remains required. Install dependencies manually in Termux:
-   > ```bash
-   > pkg install root-repo
-   > pkg install cryptsetup bindfs util-linux mount-utils blk-utils inotify-tools
-   > ```
+   | Architecture | Online ZIP | Offline ZIP |
+   |---|---|---|
+   | **arm64 (aarch64)** | Downloads deps at flash time | Bundled — no network needed |
+   | **arm (32-bit)** | Downloads deps at flash time | Bundled — no network needed |
 
    > [!NOTE]
-   > On arm64, if the device has no network at flash time, the installer will fall back to checking for Termux and abort with instructions if neither source is available.
+   > **Termux is not required.** Both ZIPs bootstrap all dependencies (`cryptsetup`, `bindfs`, `inotify-tools`, `ntfs-3g`) directly from the Termux package repo at flash time. If network is unavailable, use the offline ZIP which bundles the debs for both architectures.
+
+   > [!NOTE]
+   > If bootstrap fails for any reason, the installer falls back to Termux if installed. If neither source is available, installation is aborted with instructions.
+
+   **To ignore Termux entirely** (if installed but you want the module to never touch it):
+   ```sh
+   touch /data/adb/mounter/.no_termux
+   ```
 
 ---
 

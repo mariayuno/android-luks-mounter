@@ -28,7 +28,7 @@ ui_print "################################################"
 ui_print " "
 
 # --- 🔍 Dependency Bootstrap ---
-ui_print "[*] Checking architecture..."
+ui_print "[*] Detecting architecture..."
 
 TERMUX_PREFIX="/data/data/com.termux/files/usr"
 export PATH="$PATH:$TERMUX_PREFIX/bin:/sbin:/system/sbin:/system/bin:/system/xbin:/data/local/bin"
@@ -36,29 +36,39 @@ export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$TERMUX_PREFIX/lib"
 
 DEVICE_ARCH=$(uname -m 2>/dev/null)
 BOOTSTRAP_OK=0
+OFFLINE_DEBS="$MODPATH/offline_debs"
+NO_TERMUX_FLAG="/data/adb/mounter/.no_termux"
 
 case "$DEVICE_ARCH" in
-    aarch64|arm64)
-        ui_print "[*] arm64 detected — attempting self-contained bootstrap..."
-        if sh "$MODPATH/bootstrap.sh"; then
-            BOOTSTRAP_OK=1
-            ui_print "✅ Bootstrap complete — Termux not required."
-        else
-            ui_print "⚠️  Bootstrap failed (no network?). Checking Termux fallback..."
-        fi
-        ;;
-    *)
-        ui_print "⚠️  32-bit device detected — bootstrap not supported."
-        ui_print "⚠️  Falling back to Termux. See README for details."
-        ;;
+    aarch64|arm64) ui_print "[*] arm64 detected." ;;
+    armv7*|armv8l|arm) ui_print "[*] arm (32-bit) detected." ;;
+    *) ui_print "[!] Unknown arch: $DEVICE_ARCH — attempting bootstrap anyway." ;;
 esac
 
+# Prefer offline debs bundled in the ZIP (offline release), fall back to network.
+if [ -d "$OFFLINE_DEBS" ]; then
+    ui_print "[*] Offline debs found — installing without network..."
+    if sh "$MODPATH/bootstrap.sh" --offline "$OFFLINE_DEBS"; then
+        BOOTSTRAP_OK=1
+        ui_print "✅ Offline bootstrap complete — Termux not required."
+    else
+        ui_print "⚠️  Offline bootstrap failed. Trying network..."
+    fi
+fi
+
 if [ "$BOOTSTRAP_OK" -eq 0 ]; then
-    # Fallback: require Termux with the required packages installed
+    ui_print "[*] Attempting network bootstrap..."
+    if sh "$MODPATH/bootstrap.sh"; then
+        BOOTSTRAP_OK=1
+        ui_print "✅ Bootstrap complete — Termux not required."
+    else
+        ui_print "⚠️  Bootstrap failed. Checking Termux fallback..."
+    fi
+fi
+
+if [ "$BOOTSTRAP_OK" -eq 0 ]; then
     MISSING_DEPS=""
-    check_dep() {
-        command -v "$1" >/dev/null 2>&1 || MISSING_DEPS="$MISSING_DEPS $1"
-    }
+    check_dep() { command -v "$1" >/dev/null 2>&1 || MISSING_DEPS="$MISSING_DEPS $1"; }
     check_dep cryptsetup
     check_dep bindfs
     check_dep blkid
@@ -66,18 +76,24 @@ if [ "$BOOTSTRAP_OK" -eq 0 ]; then
 
     if [ -n "$MISSING_DEPS" ]; then
         ui_print " "
-        ui_print "🚨 CRITICAL: Missing dependencies and bootstrap unavailable!"
+        ui_print "🚨 CRITICAL: Bootstrap unavailable and Termux missing!"
         ui_print "------------------------------------------------"
         ui_print "Install dependencies in Termux:"
         ui_print "  pkg install root-repo"
-        ui_print "  pkg install cryptsetup bindfs util-linux mount-utils blk-utils"
+        ui_print "  pkg install cryptsetup bindfs util-linux mount-utils blk-utils inotify-tools"
         ui_print "------------------------------------------------"
-        ui_print " "
         abort "❌ Installation failed: missing$MISSING_DEPS"
     fi
     ui_print "✅ Termux dependencies found."
 fi
-ui_print "[*] Extracting module files..."
+
+# If bootstrap succeeded and Termux is not installed, set the no-termux flag
+# so the runtime never tries to load Termux paths.
+if [ "$BOOTSTRAP_OK" -eq 1 ] && [ ! -d "$TERMUX_PREFIX" ]; then
+    touch "$NO_TERMUX_FLAG"
+    ui_print "[*] Termux not present — runtime will use self-contained binaries only."
+fi
+
 
 # 🏷️ Version Reporting
 # Extract 'Version: v...' from the script header to show user.
