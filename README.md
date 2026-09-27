@@ -150,17 +150,17 @@ The module installer (`customize.sh`) verifies `cryptsetup`, `bindfs`, `blkid`, 
 ### Step 2 — Flash the module
 
 <!-- INSTALL_START -->
-<table><tr><td valign="top" width="65%">
 
-### Install (root shell one-liner)
-
-The **online ZIP** downloads dependencies at flash time (needs network).
+> [!TIP]
+> **Release:** `v1.5.65`  ·  **versionCode:** `1565`
+>
+> The commands below download the exact release asset produced by this workflow.
 
 <details open>
 <summary><b>KernelSU</b></summary>
 
 ```sh
-curl -Lo /tmp/mounter.zip https://github.com/rexackermann/android-luks-mounter/releases/latest/download/android-luks-mounter-v1.5.64.zip && /data/adb/ksud module install /tmp/mounter.zip
+curl -fL -o /tmp/alm.zip https://github.com/rexackermann/android-luks-mounter/releases/download/v1.5.65/android-luks-mounter-v1.5.65.zip && /data/adb/ksud module install /tmp/alm.zip
 ```
 </details>
 
@@ -168,7 +168,7 @@ curl -Lo /tmp/mounter.zip https://github.com/rexackermann/android-luks-mounter/r
 <summary><b>APatch</b></summary>
 
 ```sh
-curl -Lo /tmp/mounter.zip https://github.com/rexackermann/android-luks-mounter/releases/latest/download/android-luks-mounter-v1.5.64.zip && apd module install /tmp/mounter.zip
+curl -fL -o /tmp/alm.zip https://github.com/rexackermann/android-luks-mounter/releases/download/v1.5.65/android-luks-mounter-v1.5.65.zip && apd module install /tmp/alm.zip
 ```
 </details>
 
@@ -176,18 +176,26 @@ curl -Lo /tmp/mounter.zip https://github.com/rexackermann/android-luks-mounter/r
 <summary><b>Magisk</b></summary>
 
 ```sh
-curl -Lo /tmp/mounter.zip https://github.com/rexackermann/android-luks-mounter/releases/latest/download/android-luks-mounter-v1.5.64.zip && magisk --install-module /tmp/mounter.zip
+curl -fL -o /tmp/alm.zip https://github.com/rexackermann/android-luks-mounter/releases/download/v1.5.65/android-luks-mounter-v1.5.65.zip && magisk --install-module /tmp/alm.zip
 ```
 </details>
 
-</td><td valign="top" align="right" width="35%">
+<details>
+<summary><b>ReSukiSU</b></summary>
 
-<p align="right">
-<img src="https://img.shields.io/badge/version-v1.5.64-7c3aed?style=for-the-badge&logo=github&logoColor=white"><br>
-<img src="https://img.shields.io/badge/versionCode-1564-2563eb?style=for-the-badge"><br>
-<img src="https://img.shields.io/badge/arm64%20%2B%20arm-supported-0891b2?style=for-the-badge"><br>
-<img src="https://img.shields.io/badge/Termux-required-ef4444?style=for-the-badge">
-</p>
+Flash the same release ZIP through your module manager UI.
+
+</details>
+
+<table><tr><td valign="top" width="50%">
+
+<img src="https://img.shields.io/badge/release-v1.5.65-7c3aed?style=for-the-badge&logo=github&logoColor=white"><br>
+<img src="https://img.shields.io/badge/versionCode-1565-2563eb?style=for-the-badge"><br>
+
+</td><td valign="top" width="50%">
+
+<img src="https://img.shields.io/badge/ARM64%20%2B%20ARM-supported-0891b2?style=for-the-badge"><br>
+<img src="https://img.shields.io/badge/Termux-required-ef4444?style=for-the-badge"><br>
 
 </td></tr></table>
 
