@@ -118,6 +118,38 @@ find_tool() {
     echo "$path"
 }
 
+
+# --- 🛠️ Helper Functions (defined before first use) ---
+
+# 📝 Log
+log() { echo -e "${CYAN}${BOLD}[$(date "+%Y-%m-%d %H:%M:%S")] [*]${NC} $1"; }
+
+# 🚨 Error
+error() { echo -e "${RED}${BOLD}[$(date "+%Y-%m-%d %H:%M:%S")] [!] Error:${NC} $1" >&2; }
+
+# ⚠️ Warn
+warn() { echo -e "${YELLOW}${BOLD}[$(date "+%Y-%m-%d %H:%M:%S")] [!] Warning:${NC} $1" >&2; }
+
+# 🏃 Run Cmd
+run_cmd() {
+    local cmd="$1"
+    if [ "$cmd" = "nsenter" ] && [ -n "$NSENTER_BIN" ]; then
+        shift
+        echo -e "  ${PURPLE}➜${NC} ${BLUE}Running:${NC} ${BOLD}$NSENTER_BIN $@${NC}"
+        "$NSENTER_BIN" "$@"
+    else
+        echo -e "  ${PURPLE}➜${NC} ${BLUE}Running:${NC} ${BOLD}$@${NC}"
+        "$@"
+    fi
+}
+
+# 🔔 Notification
+send_notification() {
+    local title="$1" message="$2" tag="${3:-AndroidMounter}"
+    command -v cmd >/dev/null 2>&1 &&         run_cmd su -lp 2000 -c "cmd notification post -S bigtext -t '$title' '$tag' '$message'" >/dev/null 2>&1
+}
+
+# --- 🔧 Core Startup ---
 # Identify and Lock-in tool paths at startup for deterministic execution.
 log "Discovering core utilities..."
 NSENTER_BIN=$(find_tool nsenter) || warn "nsenter not found!"
@@ -151,53 +183,6 @@ if [ -z "$NSENTER_BIN" ] || [ -z "$BINDFS_BIN" ] || [ -z "$CRYPTSETUP_BIN" ]; th
     exit 1
 fi
 
-# --- 🛠️ Helper Functions ---
-
-# 📝 Log: Standardized logging with a splash of color and timestamp.
-log() {
-    echo -e "${CYAN}${BOLD}[$(date "+%Y-%m-%d %H:%M:%S")] [*]${NC} $1"
-}
-
-# 🏃 Run Cmd: Execute commands and show the user exactly what is happening.
-run_cmd() {
-    local cmd="$1"
-    
-    # 🔍 Intelligence: If we are calling 'nsenter', we swap the generic command
-    # for the discovered absolute binary path (Termux version).
-    if [ "$cmd" = "nsenter" ] && [ -n "$NSENTER_BIN" ]; then
-        shift
-        echo -e "  ${PURPLE}➜${NC} ${BLUE}Running:${NC} ${BOLD}$NSENTER_BIN $@${NC}"
-        "$NSENTER_BIN" "$@"
-    else
-        echo -e "  ${PURPLE}➜${NC} ${BLUE}Running:${NC} ${BOLD}$@${NC}"
-        "$@"
-    fi
-}
-
-# 🚨 Error: Reporting to STDERR with high visibility.
-error() {
-    echo -e "${RED}${BOLD}[$(date "+%Y-%m-%d %H:%M:%S")] [!] Error:${NC} $1" >&2
-}
-
-# ⚠️ Warn: Reporting for non-critical but important status updates.
-warn() {
-    echo -e "${YELLOW}${BOLD}[$(date "+%Y-%m-%d %H:%M:%S")] [!] Warning:${NC} $1" >&2
-}
-
-# 🔔 Notification: Send Android Notification (ADB Style)
-# Utilizes the 'shell' user (UID 2000) to inject notifications into the system UI.
-send_notification() {
-    local title="$1"
-    local message="$2"
-    # Optional unique tag for stacking (default if not provided)
-    local tag="${3:-AndroidMounter}"
-    
-    if command -v cmd >/dev/null 2>&1; then
-        run_cmd su -lp 2000 -c "cmd notification post -S bigtext -t '$title' '$tag' '$message'" >/dev/null 2>&1
-    else
-        warn "cmd notification not available."
-    fi
-}
 
 # --- ⚙️ Core Functions ---
 
@@ -312,7 +297,10 @@ link_bin() {
     log "Attempting to link $script_path to $link_path..."
     
     # 🔓 Try remounting /system as RW for linking (Required for some devices).
-    if [[ "$link_path" == /system/* ]]; then
+    case "$link_path" in /system/*)
+        true
+    ;; esac
+    if [ -n "$link_path" ] && case "$link_path" in /system/*) true;; *) false;; esac; then
          run_cmd nsenter -t 1 -m -- mount -o remount,rw /system 2>/dev/null
     fi
 
@@ -382,7 +370,10 @@ cleanup_stale_mounts() {
     $NSENTER_BIN -t 1 -m -- cat /proc/mounts | grep -E "/mnt/media_rw/|/storage/emulated/0/" | while read -r line; do
         local dev=$(echo "$line" | awk '{print $1}')
         local mnt=$(echo "$line" | awk '{print $2}')
-        if [[ "$dev" == /dev/block/* ]] || [[ "$dev" == /dev/mapper/* ]]; then
+        case "$dev" in /dev/block/*|/dev/mapper/*)
+            true
+        esac
+        if case "$dev" in /dev/block/*|/dev/mapper/*) true;; *) false;; esac; then
             # If the device node is gone, it's definitely stale.
             if [ ! -e "$dev" ]; then
                 [ $cleanup_done -eq 0 ] && log "Cleaning stale mounts... 🧹"
@@ -538,7 +529,7 @@ mount_device() {
         local conflict=1
         
         # 🤝 Smart Sync: Check if the "conflicting" device is actually our target (alias).
-        if [[ "$current_dev" == /dev/mapper/* ]]; then
+        if case "$current_dev" in /dev/mapper/*) true;; *) false;; esac; then
              local m_name=$(basename "$current_dev")
              local real_backend=$("$CRYPTSETUP_BIN" status "$m_name" 2>/dev/null | grep "device:" | awk '{print $2}')
              local real_target=$(readlink -f "$device")
@@ -548,7 +539,7 @@ mount_device() {
              fi
         fi
 
-        if [ "$current_dev" = "$device" ] || [[ "$current_dev" == /dev/mapper/luks_${label}_* ]]; then
+        if [ "$current_dev" = "$device" ] || case "$current_dev" in /dev/mapper/luks_${label}_*) true;; *) false;; esac; then
              conflict=0
         fi
 
@@ -558,7 +549,7 @@ mount_device() {
             # bindfs user view will be missing even though conflict=0.  Returning
             # here would silently skip bindfs creation and leave User View as "-".
             local _real_storage_chk="$target_storage"
-            if [[ "$target_storage" == "/storage/emulated/0"* ]] || [[ "$target_storage" == "/sdcard"* ]]; then
+            if case "$target_storage" in /storage/emulated/0*|/sdcard*) true;; *) false;; esac; then
                 _real_storage_chk=$(echo "$target_storage" | sed -E 's|^(/storage/emulated/0\|/sdcard)|/data/media/0|')
             fi
             if $NSENTER_BIN -t 1 -m -- mount | grep -q " ${_real_storage_chk} "; then
@@ -714,7 +705,10 @@ mount_device() {
 
     # 🔍 Nested Partition Scan (Recursive).
     # LUKS Containers often act as virtual disks containing their own partition tables.
-    if [[ "$TARGET_DEV" == /dev/mapper/* ]]; then
+    case "$TARGET_DEV" in /dev/mapper/*)
+        # nested partitions
+    esac
+    if case "$TARGET_DEV" in /dev/mapper/*) true;; *) false;; esac; then
         # Force kernel re-scan
         run_cmd blockdev --rereadpt "$TARGET_DEV" 2>/dev/null
         
@@ -759,7 +753,7 @@ mount_device() {
     
     if [ -n "$best_fs" ]; then
         # 🩹 Auto-Fix: NTFS Dirty Bit
-        if [[ "$best_fs" == "ntfs"* ]] && [ -x "$NTFSFIX_BIN" ]; then
+        if { case "$best_fs" in ntfs*) true;; *) false;; esac; } && [ -x "$NTFSFIX_BIN" ]; then
              log "Running ntfsfix to clear dirty flags..."
              run_cmd nsenter -t 1 -m -- $NS_ENV "$NTFSFIX_BIN" -d "$TARGET_DEV"
         fi
@@ -817,8 +811,8 @@ mount_device() {
         # 🔗 Bindfs User View (Global NS).
         # Automatic mapping to /data/media/0/ for better permission handling
         local real_storage="$target_storage"
-        if [[ "$target_storage" == "/storage/emulated/0"* ]] || [[ "$target_storage" == "/sdcard"* ]]; then
-             real_storage=$(echo "$target_storage" | sed -E 's|^(/storage/emulated/0\|/sdcard)|/data/media/0|')
+        if case "$target_storage" in /storage/emulated/0*|/sdcard*) true;; *) false;; esac; then
+             real_storage=$(echo "$target_storage" | sed -E 's|^(/storage/emulated/0|/sdcard)|/data/media/0|')
              log "Path Mapping: $target_storage ➔ $real_storage"
         fi
 
@@ -869,7 +863,7 @@ mount_device() {
              send_notification "Android Mounter" "Mounted $n_type ($(basename "$device")) on $target_storage" "$dev_tag"
              
              # ⚠️ Storage Path Warning
-             if [[ "$target_storage" == /storage/emulated/0/* ]]; then
+             if case "$target_storage" in /storage/emulated/0/*) true;; *) false;; esac; then
                  warn "⚠️  NOTICE: Mounted to /storage/emulated/0/ path."
                  warn "If you experience permission issues with file managers:"
                  warn "  1. Try /data/media/0/ instead (edit config file)"
@@ -910,7 +904,7 @@ save_config_label() {
     local safe_uuid=$(echo "$uuid" | tr '-' '_')
     grep -q "MAPPING_${safe_uuid}=" "$config_file" && return 1
     log "Mapping $label to $uuid... 💾"
-    local type="OTG" ; [[ "$dev_path" == *mmcblk* ]] && type="MMC"
+    local type="OTG"; case "$dev_path" in *mmcblk*) type="MMC";; esac
     echo -e "\n# --- $type Device: $uuid ---" >> "$config_file"
     echo "MAPPING_${safe_uuid}=\"$label\"" >> "$config_file"
     echo "STORAGE_PATH_${safe_uuid}=\"$BASE_STORAGE/$label\"" >> "$config_file"
@@ -972,7 +966,7 @@ show_status() {
 
     while IFS= read -r dev; do
         local name=$(basename "$dev")
-        local type="OTG" ; [[ "$dev" == *mmcblk1* ]] && type="SD"
+        local type="OTG"; case "$dev" in *mmcblk1*) type="SD";; esac
         
         # 1. Encryption Check
         local enc_state="Plain"
@@ -1021,7 +1015,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         -h|--help) usage ;;
         --install-service) MODE="install_service" ; shift ;;
-        --link-bin) MODE="link_bin" ; shift ; [ -n "$1" ] && [[ "$1" != -* ]] && LINK_PATH="$1" && shift ;;
+        --link-bin) MODE="link_bin" ; shift ; [ -n "$1" ] && case "$1" in -*) ;; *) LINK_PATH="$1" ; shift ;; esac ;;
         -u|--unmount) MODE="unmount" ; shift ;;
         --all) MODE="mount" ; AUTO_MODE="1" ; shift ;;
         --scan) MODE="scan" ; shift ;;
