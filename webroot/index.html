@@ -1158,9 +1158,10 @@ async function deleteKeyStep() {
       toast('Wrong word — deletion cancelled', 'error');
       return;
     }
+    const name = _delKeyTarget;
     closeDeleteModal();
-    const { errno } = await sh(`rm -f '${KEY_DIR}/${_delKeyTarget}'`);
-    if (errno === 0) { toast(`${_delKeyTarget} deleted`, 'success'); loadKeys(); }
+    const { errno } = await sh(`rm -f '${KEY_DIR}/${name}'`);
+    if (errno === 0) { toast(`${name} deleted`, 'success'); loadKeys(); }
     else toast('Delete failed', 'error');
   }
 }
