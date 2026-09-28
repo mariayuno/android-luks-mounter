@@ -1,6 +1,6 @@
 {
-  "version": "v1.5.75",
-  "versionCode": 1575,
-  "zipUrl": "https://github.com/rexackermann/android-luks-mounter/releases/download/v1.5.75/android-luks-mounter-v1.5.75.zip",
+  "version": "v1.5.76",
+  "versionCode": 1576,
+  "zipUrl": "https://github.com/rexackermann/android-luks-mounter/releases/download/v1.5.76/android-luks-mounter-v1.5.76.zip",
   "changelog": "https://raw.githubusercontent.com/rexackermann/android-luks-mounter/main/changelog.md"
 }
