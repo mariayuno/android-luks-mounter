@@ -91,12 +91,12 @@ Handling one layer manually is doable. Keeping all five coherent — across hotp
 <tr><td>💾 <strong>Plain storage</strong></td><td>Mounts non-LUKS removable partitions using detected filesystem type with multi-stage fallback</td></tr>
 <tr><td>🔌 <strong>Hotplug / inotify</strong></td><td><code>inotifywait</code> watches <code>/dev/block</code> for <code>CREATE</code> and <code>DELETE</code> events; pattern-filtered to removable families only</td></tr>
 <tr><td>🧠 <strong>Event coalescing</strong></td><td>One active run + one pending run; bursty partition/disk uevents do not spawn a process storm</td></tr>
-<tr><td>🩺 <strong>Health polling</strong></td><td>60-second safety poll active alongside event monitoring; catches failures that produce no device-node event</td></tr>
-<tr><td>🧹 <strong>Unplug cleanup</strong></td><td>Immediate on DELETE: removes bindfs views, unmounts hardware mount points, closes stale LUKS mappers</td></tr>
+<tr><td>🩺 <strong>Health polling</strong></td><td>60-second safety poll active alongside event monitoring; catches failures that produce no device-node event. Health subprocess is waited after termination to prevent zombie accumulation.</td></tr>
+<tr><td>🧹 <strong>Unplug cleanup</strong></td><td>Immediate on DELETE: removes bindfs views, unmounts hardware mount points, closes stale LUKS mappers. Cleanup runs in the current shell process (mktemp-based redirect) so side-effects persist correctly.</td></tr>
 <tr><td>🛡️ <strong>Two-strike blocklist</strong></td><td>Two failed mount/verify attempts → device blocked until replug or manual WebUI unblock</td></tr>
 <tr><td>👻 <strong>Ghost-device guard</strong></td><td>Reads <code>/sys/class/block/&lt;dev&gt;/size</code>; rejects zero-size or missing nodes before any mount attempt</td></tr>
 <tr><td>✅ <strong>Mount verification</strong></td><td>Directory listing immediately after <code>mount(8)</code>; I/O failure = unstable mount → unmount + strike recorded</td></tr>
-<tr><td>📂 <strong>Android user view</strong></td><td><code>bindfs</code> maps view to UID/GID <code>1023</code> (<code>media_rw</code>), mode <code>0770</code> + setgid; fallback to standard bind mount</td></tr>
+<tr><td>📂 <strong>Android user view</strong></td><td><code>bindfs</code> maps view to UID/GID <code>1023</code> (<code>media_rw</code>), mode <code>0770</code> + setgid; fallback to standard bind mount. Mount path uses the UUID-derived canonical <code>storage_point</code> as source to avoid emulated-layer aliasing.</td></tr>
 <tr><td>🔑 <strong>Key management</strong></td><td>UUID-keyed files, configured per-device paths, random 512-byte key generation, keyfile selection, <code>luksAddKey</code> enrollment</td></tr>
 <tr><td>🔔 <strong>Notifications</strong></td><td>Root-side Android notifications via <code>cmd notification</code> (shell UID 2000) for mount, unlock, I/O, and user-view events</td></tr>
 <tr><td>🌐 <strong>WebUI</strong></td><td>Built-in single-page dashboard: device status, manual mount/unmount, LUKS unlock, key manager, config editor, log viewer, blocked-device manager</td></tr>
@@ -325,7 +325,7 @@ A `bindfs` layer over the physical mount with:
 - Mode `0770`
 - setgid inheritance (new entries inherit the group)
 
-For paths under `/storage/emulated/0` or `/sdcard`, the implementation internally translates to the `/data/media/0` real path before creating or verifying the bindfs view. This avoids false verification failures caused by Android's emulated/FUSE layer sitting between the mount engine and the actual inode.
+For paths under `/storage/emulated/0` or `/sdcard`, the implementation uses the UUID-derived canonical `storage_point` as the source and internally translates to the `/data/media/0` real path before creating or verifying the bindfs view. This avoids false verification failures caused by Android's emulated/FUSE layer sitting between the mount engine and the actual inode.
 
 > [!NOTE]
 > When `bindfs` verification fails, the engine falls back to a standard bind mount. This fallback may leave the directory root-owned rather than `media_rw`-owned, which can restrict file-manager and MediaStore access depending on the ROM's FUSE enforcement.
@@ -343,7 +343,7 @@ For paths under `/storage/emulated/0` or `/sdcard`, the implementation internall
 The config file is **sourced directly by the shell-based mount engine** — it is not JSON or YAML. It is a small shell fragment.
 
 > [!CAUTION]
-> Treat the config as trusted shell code. A line in a sourced file executes with root privileges. Do not paste untrusted content into it.
+> Treat the config as trusted shell code. A line in a sourced file executes with root privileges. Do not paste untrusted content into it. The WebUI config editor base64-encodes the content in the browser and writes it via a temp file with an atomic `mv`, so the editor itself does not introduce shell injection from the content — but the resulting file still runs as root when sourced.
 
 ### Global defaults
 
@@ -412,7 +412,7 @@ Device          Type         Encryption   Mount Point           User View
 /dev/block/mmcblk1p1  SD     Plain        /mnt/media_rw/SDCard   /storage/emulated/0/ext/SDCard
 ```
 
-Encryption states: `Plain`, `Locked`, `Unlocked`. Physical mount and bindfs user view are reported separately.
+Encryption states: `Plain`, `Locked`, `Unlocked`. Physical mount and bindfs user view are reported separately. The User View column detects `fuse.bindfs` entries by matching on the physical mount source path (`hw_mnt`), not the block device basename, so it remains accurate after device name changes.
 
 ---
 
@@ -502,7 +502,7 @@ su -c 'ls -l /data/local/tmp/mounter_failures'
 
 ### Stale-state cleanup
 
-`cleanup_stale_mounts()` scans the global namespace for orphaned LUKS mappers and mount points associated with no-longer-present devices. On an unplug event, cleanup runs immediately rather than waiting for the 60-second health interval.
+`cleanup_stale_mounts()` scans the global namespace for orphaned LUKS mappers and mount points associated with no-longer-present devices. It writes the mount list to a temp file and reads it with a `while`-loop redirect so unmount side-effects are not lost in a subshell. On an unplug event, cleanup runs immediately rather than waiting for the 60-second health interval.
 
 ---
 
@@ -734,6 +734,10 @@ Android LUKS Mounter is a root-level storage administration tool. **It does not 
 **Config file:**
 - The config at `/storage/emulated/0/Documents/luks_keys/config` is sourced as shell code with root privileges. Treat it accordingly.
 
+**WebUI shell safety:**
+- Unlock passphrase: the WebUI base64-encodes the passphrase in the browser, decodes it into a temp file on the device, and passes the file path to `mounter --key-file`. The passphrase never appears on the shell command line or in any argument that could be expanded.
+- Config saves: the editor base64-encodes the full config text, decodes it into a temp file, then atomically replaces the config via `mv`. Config content is never interpolated into a shell argument. Both operations clean up the temp file on completion.
+
 ---
 
 ## Contributing
@@ -758,7 +762,6 @@ Issues and pull requests are welcome.
 - Filesystem detection and driver selection
 - WebUI bridge compatibility (`webroot/index.html`)
 - BTRFS re-enablement (requires careful testing)
-- Version metadata consistency fix (`module.prop` banner ↔ `mounter` internal header)
 
 ---
 
