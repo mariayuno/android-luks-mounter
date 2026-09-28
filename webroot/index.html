@@ -958,8 +958,13 @@ async function confirmUnlock() {
   if (!pass) { toast('Enter passphrase', 'error'); return; }
   closeModal();
   toast(`Unlocking ${_unlockDev}…`, 'info');
-  // Pipe password to mounter via stdin using printf
-  const { errno } = await sh(`printf '%s' '${pass.replace(/'/g,"'\\''")}'  | ${MOUNTER} ${_unlockDev} 2>&1`);
+  // Write passphrase to a temp file so it never touches the shell command line.
+  // Using base64 avoids all quoting/injection issues regardless of passphrase content.
+  const b64 = btoa(unescape(encodeURIComponent(pass)));
+  const { errno } = await sh(
+    `_pf=$(mktemp) && printf '%s' '${b64}' | base64 -d > "$_pf" && ` +
+    `${MOUNTER} ${_unlockDev} --key-file "$_pf" 2>&1; _rc=$?; rm -f "$_pf"; exit $_rc`
+  );
   if (errno === 0) toast('Unlocked and mounted', 'success');
   else toast('Unlock failed — wrong passphrase or check logs', 'error');
   await loadStatus();
@@ -1181,9 +1186,13 @@ async function loadConfig() {
 
 async function saveConfig() {
   const text = document.getElementById('config-text').value;
-  // Write via printf to handle special chars safely
-  const escaped = text.replace(/'/g, "'\\''");
-  const { errno } = await sh(`printf '%s' '${escaped}' > '${CONFIG_PATH}'`);
+  // Encode as base64 so the content never touches the shell as an argument.
+  // Written to a temp file then atomically moved to avoid partial writes and
+  // prevent shell expansion of $(...) or backticks in the config content.
+  const b64 = btoa(unescape(encodeURIComponent(text)));
+  const { errno } = await sh(
+    `_cf=$(mktemp) && printf '%s' '${b64}' | base64 -d > "$_cf" && mv "$_cf" '${CONFIG_PATH}'`
+  );
   if (errno === 0) toast('Config saved', 'success');
   else toast('Save failed', 'error');
 }
