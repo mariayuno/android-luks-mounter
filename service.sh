@@ -31,7 +31,7 @@ do_mount() {
     if mkdir "$LOCK_FILE" 2>/dev/null; then
         # Fast path: no one running, go immediately.
         /system/bin/mounter --all >> "$LOG_FILE" 2>&1
-        rm -rf "$LOCK_FILE"
+        [ -n "$LOCK_FILE" ] && rm -rf "$LOCK_FILE"
     elif mkdir "$PENDING_FILE" 2>/dev/null; then
         # One run in progress, queue ourselves as the single pending waiter.
         # Wait for the lock with a 60s safety timeout against a stuck lock.
@@ -39,11 +39,11 @@ do_mount() {
         while ! mkdir "$LOCK_FILE" 2>/dev/null; do
             sleep 1
             waited=$((waited + 1))
-            [ "$waited" -ge 60 ] && rm -rf "$LOCK_FILE" && break
+            [ "$waited" -ge 60 ] && [ -n "$LOCK_FILE" ] && rm -f "$LOCK_FILE" && break
         done
-        rm -rf "$PENDING_FILE"
+        [ -n "$PENDING_FILE" ] && rm -rf "$PENDING_FILE"
         /system/bin/mounter --all >> "$LOG_FILE" 2>&1
-        rm -rf "$LOCK_FILE"
+        [ -n "$LOCK_FILE" ] && rm -rf "$LOCK_FILE"
     fi
     # else: LOCK held AND PENDING exists -> drop this trigger silently.
 }
@@ -67,6 +67,7 @@ if [ -x "$INOTIFYWAIT" ]; then
     done
 
     kill "$HEALTH_PID" 2>/dev/null
+    wait "$HEALTH_PID" 2>/dev/null
 
 else
     while true; do
