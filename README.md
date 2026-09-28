@@ -152,7 +152,7 @@ The module installer (`customize.sh`) verifies `cryptsetup`, `bindfs`, `blkid`, 
 <!-- INSTALL_START -->
 
 > [!TIP]
-> **Release:** `v1.5.70`  ·  **versionCode:** `1570`
+> **Release:** `v1.5.71`  ·  **versionCode:** `1571`
 >
 > The commands below download the exact release asset produced by this workflow.
 
@@ -160,7 +160,7 @@ The module installer (`customize.sh`) verifies `cryptsetup`, `bindfs`, `blkid`, 
 <summary><b>KernelSU</b></summary>
 
 ```sh
-curl -fL -o /tmp/alm.zip https://github.com/mariayuno/android-luks-mounter/releases/download/v1.5.70/android-luks-mounter-v1.5.70.zip && /data/adb/ksud module install /tmp/alm.zip
+curl -fL -o /tmp/alm.zip https://github.com/rexackermann/android-luks-mounter/releases/download/v1.5.71/android-luks-mounter-v1.5.71.zip && /data/adb/ksud module install /tmp/alm.zip
 ```
 </details>
 
@@ -168,7 +168,7 @@ curl -fL -o /tmp/alm.zip https://github.com/mariayuno/android-luks-mounter/relea
 <summary><b>APatch</b></summary>
 
 ```sh
-curl -fL -o /tmp/alm.zip https://github.com/mariayuno/android-luks-mounter/releases/download/v1.5.70/android-luks-mounter-v1.5.70.zip && apd module install /tmp/alm.zip
+curl -fL -o /tmp/alm.zip https://github.com/rexackermann/android-luks-mounter/releases/download/v1.5.71/android-luks-mounter-v1.5.71.zip && apd module install /tmp/alm.zip
 ```
 </details>
 
@@ -176,7 +176,7 @@ curl -fL -o /tmp/alm.zip https://github.com/mariayuno/android-luks-mounter/relea
 <summary><b>Magisk</b></summary>
 
 ```sh
-curl -fL -o /tmp/alm.zip https://github.com/mariayuno/android-luks-mounter/releases/download/v1.5.70/android-luks-mounter-v1.5.70.zip && magisk --install-module /tmp/alm.zip
+curl -fL -o /tmp/alm.zip https://github.com/rexackermann/android-luks-mounter/releases/download/v1.5.71/android-luks-mounter-v1.5.71.zip && magisk --install-module /tmp/alm.zip
 ```
 </details>
 
@@ -189,8 +189,8 @@ Flash the same release ZIP through your module manager UI.
 
 <table><tr><td valign="top" width="50%">
 
-<img src="https://img.shields.io/badge/release-v1.5.70-7c3aed?style=for-the-badge&logo=github&logoColor=white"><br>
-<img src="https://img.shields.io/badge/versionCode-1570-2563eb?style=for-the-badge"><br>
+<img src="https://img.shields.io/badge/release-v1.5.71-7c3aed?style=for-the-badge&logo=github&logoColor=white"><br>
+<img src="https://img.shields.io/badge/versionCode-1571-2563eb?style=for-the-badge"><br>
 
 </td><td valign="top" width="50%">
 
