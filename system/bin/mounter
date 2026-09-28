@@ -6,7 +6,7 @@
 #                                                                              #
 #   👤 Author: Rex Ackermann                                                   #
 #   🌐 GitHub: https://github.com/rexackermann                                 #
-#   🏷️ Version: v1.5.45                                                #
+#   🏷️ Version: $(grep "^version=" /data/adb/modules/android_luks_mounter/module.prop 2>/dev/null | cut -d= -f2) #
 #                                                                              #
 #   🛠️  Requirements: Root (Magisk/KSU), Termux, Cryptsetup, Bindfs, Blkid     #
 #   ⚖️  License: MIT                                                           #
@@ -367,14 +367,16 @@ cleanup_stale_mounts() {
     done
 
     # 2️⃣ Scan all mount points for block devices that no longer exist.
-    $NSENTER_BIN -t 1 -m -- cat /proc/mounts | grep -E "/mnt/media_rw/|/storage/emulated/0/" | while read -r line; do
-        local dev=$(echo "$line" | awk '{print $1}')
-        local mnt=$(echo "$line" | awk '{print $2}')
-        case "$dev" in /dev/block/*|/dev/mapper/*)
-            true
-        esac
+    # Write mounts to a temp file so the while-read runs in the current shell,
+    # not a subshell — otherwise unmount_device side-effects are lost (Bug 10).
+    local _mounts_tmp
+    _mounts_tmp=$(mktemp)
+    $NSENTER_BIN -t 1 -m -- cat /proc/mounts | grep -E "/mnt/media_rw/|/storage/emulated/0/" > "$_mounts_tmp"
+    while IFS= read -r line; do
+        local dev mnt
+        dev=$(echo "$line" | awk '{print $1}')
+        mnt=$(echo "$line" | awk '{print $2}')
         if case "$dev" in /dev/block/*|/dev/mapper/*) true;; *) false;; esac; then
-            # If the device node is gone, it's definitely stale.
             if [ ! -e "$dev" ]; then
                 [ $cleanup_done -eq 0 ] && log "Cleaning stale mounts... 🧹"
                 log "Cleaning stale global mount: $mnt (Device $dev gone)"
@@ -382,7 +384,8 @@ cleanup_stale_mounts() {
                 cleanup_done=1
             fi
         fi
-    done
+    done < "$_mounts_tmp"
+    rm -f "$_mounts_tmp"
 }
 
 # 🔍 Find Existing Mapper: Check if a device is already unlocked.
@@ -467,6 +470,9 @@ mount_device() {
     local device=$1
     local label=$2
     
+    # Reset per-call state flags
+    HARDWARE_ALREADY_MOUNTED=0
+
     # 🛡️ Safety: Skip internal storage and other non-target blocks.
     [ ! -b "$device" ] && return 1
     case "$device" in *mmcblk0*|*dm-*|*loop*) [ "$AUTO_MODE" != "1" ] && error "Safety: $device is internal." ; return 1 ;; esac
@@ -482,7 +488,6 @@ mount_device() {
     fi
 
     # 🔋 Device Health Check: Verify if the node is a "ghost" or unresponsive.
-    local dev_name=$(basename "$device")
     if [ ! -r "/sys/class/block/$dev_name/size" ] || [ "$(cat "/sys/class/block/$dev_name/size" 2>/dev/null)" -eq 0 ]; then
         error "Device $device is unresponsive or has 0 size (Ghost Node)."
         warn "💡 Tip: Unplug and re-plug the drive to refresh the kernel state."
@@ -669,15 +674,15 @@ mount_device() {
         case "$unlock_opt" in
             2) printf "Keyfile path: " ; read -r mk ; [ -f "$mk" ] && run_cmd "$CRYPTSETUP_BIN" open "$device" "$mapper_name" --key-file "$mk" && unlocked=1 ;;
             s|S) return 1 ;;
-            *) log "Password for $device:" ; stty -echo ; read -r PASS ; stty echo ; echo "" 
+            *) log "Password for $device:" ; stty -echo ; read -r _LUKS_PASS ; stty echo ; echo "" 
                # 🛡️ Aggressive conflict resolution: If opening fails due to "in use", try to find who is using it.
-               if ! echo -n "$PASS" | run_cmd "$CRYPTSETUP_BIN" open "$device" "$mapper_name"; then
+               if ! printf '%s' "$_LUKS_PASS" | run_cmd "$CRYPTSETUP_BIN" open "$device" "$mapper_name"; then
                    warn "$device reports 'already in use'. Re-scanning for ghosts..."
                    local ghost=$(find_existing_mapper "$device")
                    if [ -n "$ghost" ]; then
                        log "Found orphan mapper: $ghost. Closing..."
                        run_cmd "$CRYPTSETUP_BIN" close "$ghost"
-                       echo -n "$PASS" | run_cmd "$CRYPTSETUP_BIN" open "$device" "$mapper_name" && unlocked=1
+                       printf '%s' "$_LUKS_PASS" | run_cmd "$CRYPTSETUP_BIN" open "$device" "$mapper_name" && unlocked=1
                    else
                        error "Failed to open $device."
                    fi
@@ -688,7 +693,7 @@ mount_device() {
                    error "Unlock failed." 
                    local dev_tag="AndroidMounter_$(basename "$device")"
                    send_notification "Android Mounter" "Unlock Failed for $(basename "$device") 🔒" "$dev_tag"
-                   unset PASS ; return 1 
+                   unset _LUKS_PASS ; return 1 
                } 
                ;;
         esac
@@ -698,9 +703,9 @@ mount_device() {
             echo "Save new keyfile for auto-unlock? [y/N]" ; read -r sk
             if [ "$sk" = "y" ]; then
                 dd if=/dev/urandom of="$keyfile" bs=512 count=1 >/dev/null 2>&1 ; chmod 600 "$keyfile"
-                [ -n "$PASS" ] && echo -n "$PASS" | run_cmd "$CRYPTSETUP_BIN" luksAddKey "$device" "$keyfile" || run_cmd "$CRYPTSETUP_BIN" luksAddKey "$device" "$keyfile"
+                [ -n "$_LUKS_PASS" ] && printf '%s' "$_LUKS_PASS" | run_cmd "$CRYPTSETUP_BIN" luksAddKey "$device" "$keyfile" || run_cmd "$CRYPTSETUP_BIN" luksAddKey "$device" "$keyfile"
             fi
-        fi ; unset PASS
+        fi ; unset _LUKS_PASS
     fi
 
     # 🔍 Nested Partition Scan (Recursive).
@@ -810,10 +815,11 @@ mount_device() {
         
         # 🔗 Bindfs User View (Global NS).
         # Automatic mapping to /data/media/0/ for better permission handling
-        local real_storage="$target_storage"
-        if case "$target_storage" in /storage/emulated/0*|/sdcard*) true;; *) false;; esac; then
-             real_storage=$(echo "$target_storage" | sed -E 's|^(/storage/emulated/0|/sdcard)|/data/media/0|')
-             log "Path Mapping: $target_storage ➔ $real_storage"
+        # Use storage_point (derived from real UUID) as canonical path
+        local real_storage="${storage_point:-$target_storage}"
+        if case "$real_storage" in /storage/emulated/0*|/sdcard*) true;; *) false;; esac; then
+             real_storage=$(echo "$real_storage" | sed 's|^/storage/emulated/0|/data/media/0|;s|^/sdcard|/data/media/0|')
+             log "Path Mapping: ${storage_point:-$target_storage} ➔ $real_storage"
         fi
 
         log "Creating user-visible bindfs view at $real_storage..."
@@ -853,17 +859,17 @@ mount_device() {
                   send_notification "Android Mounter" "User View Failed for $(basename "$device") ⚠️" "$dev_tag"
              else
                   log "Fallback active: ${YELLOW}Access OK (Root owned)${NC}"
-                  send_notification "Android Mounter" "Mounted (Fallback Mode) on $target_storage" "$dev_tag"
-                  log "Success! 🎊 Your drive is now at: ${BOLD}$target_storage${NC}"
+                  send_notification "Android Mounter" "Mounted (Fallback Mode) on ${storage_point:-$target_storage}" "$dev_tag"
+                  log "Success! 🎊 Your drive is now at: ${BOLD}${storage_point:-$target_storage}${NC}"
              fi
         else
              # 🔔 Notify User (Success)
              local n_type="Drive"
              [ $IS_LUKS -eq 1 ] && n_type="Secure Drive"
-             send_notification "Android Mounter" "Mounted $n_type ($(basename "$device")) on $target_storage" "$dev_tag"
+             send_notification "Android Mounter" "Mounted $n_type ($(basename "$device")) on ${storage_point:-$target_storage}" "$dev_tag"
              
              # ⚠️ Storage Path Warning
-             if case "$target_storage" in /storage/emulated/0/*) true;; *) false;; esac; then
+             if case "${storage_point:-$target_storage}" in /storage/emulated/0/*) true;; *) false;; esac; then
                  warn "⚠️  NOTICE: Mounted to /storage/emulated/0/ path."
                  warn "If you experience permission issues with file managers:"
                  warn "  1. Try /data/media/0/ instead (edit config file)"
@@ -875,7 +881,7 @@ mount_device() {
              if [ "$AUTO_MODE" != "1" ]; then
                  save_config_label "$uuid" "$label" "$device"
              fi
-             log "Success! 🎊 Your drive is now at: ${BOLD}$target_storage${NC}"
+             log "Success! 🎊 Your drive is now at: ${BOLD}${storage_point:-$target_storage}${NC}"
         fi
     else
         warn "Bindfs failed. Detaching..." ; run_cmd nsenter -t 1 -m -- "$UMOUNT_BIN" "$mnt_point"
@@ -999,7 +1005,8 @@ show_status() {
 # --- 🚀 Main Execution Block ---
 
 SESSION_ID=$(date +%s)_$((RANDOM % 1000))
-log "Starting Android LUKS Mounter v1.5.45 ✨"
+VER=$(grep "^version=" /data/adb/modules/android_luks_mounter/module.prop 2>/dev/null | cut -d= -f2)
+log "Starting Android LUKS Mounter ${VER:-v?.?.??} ✨"
 log "Session ID: $SESSION_ID"
 log "Executing from: $(readlink -f "$0")"
 
