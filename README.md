@@ -770,12 +770,6 @@ Released under the **[MIT License](LICENSE)**.
 
 <div align="center">
 
-<sub>Created by <a href="https://github.com/rexackermann">Rex Ackermann</a> · Maintained by <a href="https://github.com/rexackermann">Rex Ackermann</a> and <a href="https://github.com/mariayuno">Maria Yuno</a> (WebUI, bridge compatibility, shell safety fixes, security hardening)</sub>
-
-<br>
-
-<!-- Dynamic: auto-reflects latest release tag -->
-[![GitHub Release](https://img.shields.io/github/v/release/rexackermann/android-luks-mounter?style=flat-square&label=latest&color=7c3aed)](https://github.com/rexackermann/android-luks-mounter/releases/latest)
-[![Stars](https://img.shields.io/github/stars/rexackermann/android-luks-mounter?style=flat-square&color=f59e0b)](https://github.com/rexackermann/android-luks-mounter/stargazers)
+<sub>Created by <a href="https://github.com/rexackermann">Rex Ackermann</a> · Maintained by <a href="https://github.com/rexackermann">Rex Ackermann</a> and <a href="https://github.com/mariayuno">Maria Yuno</a></sub>
 
 </div>
