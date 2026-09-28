@@ -589,7 +589,7 @@ Read this before opening an issue.
 | 7 | **ROM-dependent FUSE behavior.** `bindfs` ownership mapping works on common ROMs, but Android's FUSE/storage policies vary. The standard-bind fallback may not provide the same app-level access semantics. |
 | 8 | **`--install-service` is additive, not a replacement.** It creates an additional `/data/adb/service.d/` polling loop. The module already ships its own `service.sh` event daemon. Running both creates duplicate mount passes. |
 | 9 | **`--link-bin` may fail on read-only system partitions.** Modern devices with system-as-root layouts reject `/system` remounts. The normal module installation already provides `system/bin/mounter` via the module overlay; most users should not need this option. |
-| 10 | **Version display inconsistency in current source.** The published `v1.5.58` release metadata (`module.prop`, `update.json`) and the internal `mounter` banner (`v1.5.45`) do not match. The installer extracts its display version from the internal banner. This is a source-level metadata issue and does not affect runtime behavior, but it will cause the module manager and installer output to show `v1.5.45` instead of `v1.5.58`. |
+| 10 | **Version display** — the `mounter` binary now reads its version live from `module.prop` at startup. Module manager and log output always reflect the installed release version. *(Fixed in v1.5.72.)* |
 
 ---
 
@@ -770,7 +770,7 @@ Released under the **[MIT License](LICENSE)**.
 
 <div align="center">
 
-<sub>Created by <a href="https://github.com/rexackermann">Rex Ackermann</a> and Maintained by <a href="https://github.com/rexackermann">Rex Ackermann</a> and <a href="https://github.com/mariayuno">Maria Yuno</a></sub>
+<sub>Created by <a href="https://github.com/rexackermann">Rex Ackermann</a> · Maintained by <a href="https://github.com/rexackermann">Rex Ackermann</a> and <a href="https://github.com/mariayuno">Maria Yuno</a> (WebUI, bridge compatibility, shell safety fixes, security hardening)</sub>
 
 <br>
 
