@@ -15,9 +15,9 @@ bless_dir() {
     
     # Check if the path is within internal storage (sdcard)
     # This is where the FUSE overlay permission issues happen.
-    if [[ "$dir" == "/storage/emulated/0"* ]] || [[ "$dir" == "/sdcard"* ]] || [[ "$dir" == "/data/media/0"* ]]; then
+    if case "$dir" in /storage/emulated/0*|/sdcard*|/data/media/0*) true;; *) false;; esac; then
         # Map /storage/emulated/0 or /sdcard to /data/media/0 for early boot creation
-        local real_dir=$(echo "$dir" | sed -E 's|^(/storage/emulated/0\|/sdcard)|/data/media/0|')
+        local real_dir=$(echo "$dir" | sed 's|^/storage/emulated/0|/data/media/0|;s|^/sdcard|/data/media/0|')
         
         [ ! -d "$real_dir" ] && mkdir -p "$real_dir"
         
